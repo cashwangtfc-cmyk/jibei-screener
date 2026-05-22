@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>吉開北丸發財系統</title>
+<style>
+:root{
+  --bg:#0f172a;--bg2:#1e293b;--border:#e2e8f0;
+  --blue:#3b82f6;--blue-d:#1d4ed8;--blue-l:#eff6ff;
+  --green:#16a34a;--green-l:#dcfce7;
+  --red:#dc2626;--red-l:#fee2e2;
+  --amber:#d97706;--amber-l:#fef3c7;
+  --gray-50:#f8fafc;--gray-100:#f1f5f9;--gray-400:#94a3b8;--gray-500:#64748b;--gray-700:#374151;
+  --radius:14px;--radius-sm:10px;
+  --shadow:0 2px 8px rgba(0,0,0,.08);--shadow-lg:0 8px 28px rgba(0,0,0,.12);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Noto Sans TC','Microsoft JhengHei',sans-serif;background:var(--gray-100);color:#0f172a;min-height:100vh;}
+
+.header{background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 60%,#1d4ed8 100%);padding:20px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;}
+.logo{display:flex;align-items:center;gap:10px;color:white;}
+.logo-icon{font-size:30px;}
+.logo-text h1{font-size:20px;font-weight:800;letter-spacing:.3px;}
+.logo-text p{font-size:12px;opacity:.55;margin-top:2px;}
+.header-right{display:flex;align-items:center;gap:12px;}
+.meta-text{font-size:12px;color:rgba(255,255,255,.5);}
+.refresh-btn{padding:8px 18px;border:1.5px solid rgba(255,255,255,.25);border-radius:20px;background:rgba(255,255,255,.1);color:white;font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;backdrop-filter:blur(4px);}
+.refresh-btn:hover{background:rgba(255,255,255,.2);border-color:rgba(255,255,255,.4);}
+.refresh-btn:disabled{opacity:.5;cursor:not-allowed;}
+
+.container{max-width:1200px;margin:0 auto;padding:24px 16px;}
+
+.loading-box{text-align:center;padding:60px 20px;color:var(--gray-500);}
+.spinner{display:inline-block;width:44px;height:44px;border:4px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite;margin-bottom:16px;}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-box p{font-size:16px;font-weight:500;margin-bottom:12px;}
+.loading-box small{font-size:13px;color:var(--gray-400);}
+
+.progress-wrap{margin:16px auto 12px;max-width:400px;}
+.progress-bg{height:8px;background:#e2e8f0;border-radius:4px;overflow:hidden;}
+.progress-fill{height:100%;background:linear-gradient(90deg,var(--blue),#6366f1);border-radius:4px;transition:width .4s ease;width:0%;}
+.progress-status{font-size:12px;color:var(--gray-400);margin-top:6px;}
+
+.error-box{background:var(--red-l);border:1px solid #fca5a5;border-radius:var(--radius);padding:16px 20px;color:#b91c1c;font-weight:500;margin-bottom:16px;}
+
+.section{margin-bottom:32px;}
+.section-head{display:flex;align-items:center;gap:10px;margin-bottom:14px;padding-bottom:10px;border-bottom:2px solid var(--border);}
+.section-icon{font-size:22px;}
+.section-title{font-size:18px;font-weight:800;color:#0f172a;}
+.section-sub{font-size:13px;color:var(--gray-400);font-weight:400;margin-left:4px;}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:12px;}
+
+.scard{background:white;border-radius:var(--radius-sm);padding:16px;border:1.5px solid var(--border);cursor:pointer;transition:all .2s;box-shadow:var(--shadow);position:relative;text-decoration:none;display:block;color:inherit;}
+.scard:hover{border-color:var(--blue);box-shadow:0 6px 20px rgba(59,130,246,.18);transform:translateY(-3px);}
+.scard-rank{position:absolute;top:12px;right:12px;width:22px;height:22px;border-radius:50%;background:var(--blue);color:white;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;}
+.scard-rank.gold{background:#f59e0b;}
+.scard-rank.silver{background:#94a3b8;}
+.scard-rank.bronze{background:#b45309;}
+.scard-code{font-size:11px;font-weight:700;color:var(--gray-400);font-family:monospace;letter-spacing:.5px;margin-bottom:2px;}
+.scard-name{font-size:15px;font-weight:800;color:#0f172a;margin-bottom:8px;padding-right:28px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.scard-price{font-size:22px;font-weight:900;font-family:'Courier New',monospace;line-height:1;}
+.scard-chg{font-size:12px;font-weight:700;margin-top:3px;margin-bottom:10px;}
+.up{color:#dc2626;}.down{color:#16a34a;}.flat{color:#94a3b8;}
+.scard-divider{height:1px;background:var(--border);margin:10px 0;}
+.scard-metrics{display:flex;flex-direction:column;gap:5px;}
+.scard-metric{display:flex;justify-content:space-between;align-items:center;font-size:11.5px;}
+.scard-ml{color:var(--gray-500);}
+.scard-mv{font-weight:700;color:#0f172a;}
+.scard-mv.good{color:var(--green);}
+.scard-mv.bad{color:var(--red);}
+.scard-mv.warn{color:var(--amber);}
+
+.empty{text-align:center;padding:32px;color:var(--gray-400);font-size:14px;background:white;border-radius:var(--radius-sm);border:1.5px dashed var(--border);}
+
+.notice{background:#f0f9ff;border:1px solid #bae6fd;border-radius:var(--radius);padding:12px 16px;font-size:13px;color:#0369a1;margin-bottom:20px;}
+
+@media(max-width:600px){
+  .header{padding:14px 12px;}
+  .grid{grid-template-columns:repeat(2,1fr);}
+  .section-title{font-size:16px;}
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">
+    <div class="logo-icon">📊</div>
+    <div class="logo-text">
+      <h1>吉開北丸發財系統</h1>
+      <p>當沖精選 · 短期潛力 · 長期配息 · 低估掃描</p>
+    </div>
+  </div>
+  <div class="header-right">
+    <span class="meta-text" id="meta-text"></span>
+    <button class="refresh-btn" id="refresh-btn" onclick="load(true)">🔄 重新整理</button>
+  </div>
+</div>
+
+<div class="container">
+  <div id="loading" class="loading-box">
+    <div class="spinner"></div>
+    <p id="loading-text">正在取得市場資料…</p>
+    <div class="progress-wrap" id="progress-wrap" style="display:none">
+      <div class="progress-bg"><div class="progress-fill" id="progress-fill"></div></div>
+      <div class="progress-status" id="progress-status"></div>
+    </div>
+    <small>首次掃描約 1–2 分鐘，之後快取 20 分鐘</small>
+  </div>
+  <div id="error" class="error-box" style="display:none;"></div>
+  <div id="content" style="display:none;"></div>
+</div>
+
+<script>
+// ===================== HELPERS =====================
+function parseNum(str) {
+  if (str == null) return null;
+  const s = String(str).replace(/,/g, '').trim();
+  if (!s || s === '--' || s === '—' || s === 'N/A') return null;
+  const n = parseFloat(s);
+  return isNaN(n) ? null : n;
+}
+
+function timeout(ms) {
+  return new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms));
+}
+async function fetchWithTimeout(url, opts = {}, ms = 12000) {
+  return Promise.race([fetch(url, opts), timeout(ms)]);
+}
+
+// ===================== TECHNICAL INDICATORS =====================
+function calcSMA(values, period) {
+  if (values.length < period) return [];
+  const result = [];
+  let sum = 0;
+  for (let i = 0; i < period; i++) sum += values[i];
+  result.push(sum / period);
+  for (let i = period; i < values.length; i++) {
+    sum += values[i] - values[i - period];
+    result.push(sum / period);
+  }
+  return result;
+}
+
+function calcEMA(values, period) {
+  if (values.length < period) return [];
+  const k = 2 / (period + 1);
+  let ema = 0;
+  for (let i = 0; i < period; i++) ema += values[i];
+  ema /= period;
+  const result = [ema];
+  for (let i = period; i < values.length; i++) {
+    ema = values[i] * k + ema * (1 - k);
+    result.push(ema);
+  }
+  return result;
+}
+
+function calcRSI(closes, period = 14) {
+  if (closes.length < period + 1) return [];
+  let avgGain = 0, avgLoss = 0;
+  for (let i = 1; i <= period; i++) {
+    const d = closes[i] - closes[i - 1];
+    if (d > 0) avgGain += d; else avgLoss -= d;
+  }
+  avgGain /= period; avgLoss /= period;
+  const result = [avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss)];
+  for (let i = period + 1; i < closes.length; i++) {
+    const d = closes[i] - closes[i - 1];
+    avgGain = (avgGain * (period - 1) + Math.max(d, 0)) / period;
+    avgLoss = (avgLoss * (period - 1) + Math.max(-d, 0)) / period;
+    result.push(avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss));
+  }
+  return result;
+}
+
+function calcMACD(closes, fast = 12, slow = 26, sig = 9) {
+  const emaF = calcEMA(closes, fast);
+  const emaS = calcEMA(closes, slow);
+  if (!emaF.length || !emaS.length) return null;
+  const offset = (fast - 1) - (slow - 1); // emaF starts earlier: offset = slow - fast positions ahead
+  // emaF[i + (slow-fast)] aligns with emaS[i]
+  const diff = slow - fast;
+  const macdLine = emaS.map((v, i) => emaF[i + diff] - v);
+  const sigLine  = calcEMA(macdLine, sig);
+  if (!sigLine.length) return null;
+  const lastHist = macdLine[macdLine.length - 1] - sigLine[sigLine.length - 1];
+  const prevHist = macdLine.length >= 2 && sigLine.length >= 2
+    ? macdLine[macdLine.length - 2] - sigLine[sigLine.length - 2] : null;
+  return { macdHist: lastHist, macdHistChange: prevHist != null ? lastHist - prevHist : null };
+}
+
+function calcStochastic(highs, lows, closes, period = 9, sigPeriod = 3) {
+  if (closes.length < period + sigPeriod - 1) return null;
+  const n = Math.min(closes.length, highs.length, lows.length);
+  const kArr = [];
+  for (let i = period - 1; i < n; i++) {
+    const hh = Math.max(...highs.slice(i - period + 1, i + 1));
+    const ll = Math.min(...lows.slice(i - period + 1, i + 1));
+    kArr.push(hh === ll ? 50 : (closes[i] - ll) / (hh - ll) * 100);
+  }
+  const dArr = calcSMA(kArr, sigPeriod);
+  if (!dArr.length) return null;
+  const lastK = kArr[kArr.length - 1], lastD = dArr[dArr.length - 1];
+  const prevK = kArr.length >= 2 ? kArr[kArr.length - 2] : null;
+  const prevD = dArr.length >= 2 ? dArr[dArr.length - 2] : null;
+  return {
+    kdK: lastK, kdD: lastD,
+    kdGolden: prevK != null && prevD != null && prevK <= prevD && lastK > lastD,
+    kdDead:   prevK != null && prevD != null && prevK >= prevD && lastK < lastD,
+  };
+}
+
+function calcBB(closes, period = 20) {
+  if (closes.length < period) return null;
+  const smaArr = calcSMA(closes, period);
+  const mid = smaArr[smaArr.length - 1];
+  const slice = closes.slice(closes.length - period);
+  const variance = slice.reduce((s, v) => s + (v - mid) ** 2, 0) / period;
+  const sd = Math.sqrt(variance);
+  const upper = mid + 2 * sd, lower = mid - 2 * sd;
+  const price = closes[closes.length - 1];
+  const bw = upper - lower;
+  return { bbPct: bw > 0 ? (price - lower) / bw : 0.5, bbWidth: bw > 0 ? bw / mid : 0 };
+}
+
+function calcTech(history) {
+  const { closes, volumes, highs, lows } = history;
+  if (!closes || closes.length < 15) return {};
+  const t = {};
+  const price = closes[closes.length - 1];
+
+  if (closes.length >= 5)  t.ma5  = calcSMA(closes, 5).at(-1);
+  if (closes.length >= 10) t.ma10 = calcSMA(closes, 10).at(-1);
+  if (closes.length >= 20) t.ma20 = calcSMA(closes, 20).at(-1);
+  if (closes.length >= 50) t.ma50 = calcSMA(closes, 50).at(-1);
+
+  if (t.ma5 != null && t.ma10 != null && t.ma20 != null)
+    t.maAlign = (price > t.ma5 ? 1 : 0) + (t.ma5 > t.ma10 ? 1 : 0) + (t.ma10 > t.ma20 ? 1 : 0);
+
+  const rsiArr = calcRSI(closes, 14);
+  if (rsiArr.length >= 1) {
+    t.rsi = rsiArr.at(-1);
+    if (rsiArr.length >= 5) t.rsiTrend = rsiArr.at(-1) - rsiArr.at(-5);
+  }
+
+  if (closes.length >= 35) {
+    const m = calcMACD(closes);
+    if (m) { t.macdHist = m.macdHist; t.macdHistChange = m.macdHistChange; }
+  }
+
+  if (highs && lows && closes.length >= 14) {
+    const kd = calcStochastic(highs, lows, closes);
+    if (kd) { t.kdK = kd.kdK; t.kdD = kd.kdD; t.kdGolden = kd.kdGolden; t.kdDead = kd.kdDead; }
+  }
+
+  if (closes.length >= 20) {
+    const bb = calcBB(closes);
+    if (bb) { t.bbPct = bb.bbPct; t.bbWidth = bb.bbWidth; }
+  }
+
+  if (volumes?.length >= 6) {
+    const vv = volumes.filter(v => v != null);
+    if (vv.length >= 6) {
+      const today = vv.at(-1), avg5 = vv.slice(-6, -1).reduce((a, b) => a + b, 0) / 5;
+      t.volRatio = avg5 > 0 ? today / avg5 : null;
+    }
+  }
+
+  if (closes.length >= 21) {
+    const sl = closes.slice(-21);
+    const rets = sl.slice(1).map((c, i) => (c - sl[i]) / sl[i]);
+    const mean = rets.reduce((a, b) => a + b, 0) / rets.length;
+    t.volatility = Math.sqrt(rets.reduce((a, b) => a + (b - mean) ** 2, 0) / rets.length) * 100;
+  }
+
+  return t;
+}
+
+// ===================== TWSE / YAHOO FETCH =====================
+async function getTWSEDailyAll() {
+  const urls = [
+    'https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY_ALL?response=json',
+    'https://www.twse.com.tw/exchangeReport/STOCK_DAY_ALL?response=json',
+  ];
+  for (const url of urls) {
+    try {
+      const r = await fetchWithTimeout(url, {}, 15000);
+      if (!r.ok) continue;
+      const json = await r.json();
+      if (json.stat !== 'OK' || !json.data?.length) continue;
+      const stocks = [];
+      for (const row of json.data) {
+        const code = row[0]?.trim();
+        if (!code) continue;
+        const close  = parseNum(row[7]);
+        const volume = parseNum(row[2]);
+        if (!close || !volume || close < 2) continue;
+        const open  = parseNum(row[4]) || close;
+        const high  = parseNum(row[5]) || close;
+        const low   = parseNum(row[6]) || close;
+        const value = parseNum(row[3]);
+        const changeAmt = parseNum(row[8]?.trim() || '0') || 0;
+        const prevClose = close - changeAmt;
+        const changePct = prevClose > 0 ? parseFloat((changeAmt / prevClose * 100).toFixed(2)) : 0;
+        const changeDir = changeAmt > 0 ? '+' : changeAmt < 0 ? '-' : '';
+        stocks.push({ code, name: row[1]?.trim() || code, volume, value, open, high, low, close, changeDir, changeAmt, changePct });
+      }
+      if (stocks.length > 100) return { stocks, date: json.date || null };
+    } catch {}
+  }
+  return { stocks: [], date: null };
+}
+
+async function getTWSEFundamentalsAll() {
+  for (let d = 0; d < 7; d++) {
+    const dt = new Date();
+    dt.setDate(dt.getDate() - d);
+    const dtStr = dt.toISOString().split('T')[0].replace(/-/g, '');
+    try {
+      const r = await fetchWithTimeout(
+        `https://www.twse.com.tw/rwd/zh/afterTrading/BWIBBU_d?date=${dtStr}&response=json`, {}, 15000
+      );
+      if (!r.ok) continue;
+      const json = await r.json();
+      if (json.stat !== 'OK' || !json.data?.length) continue;
+      const map = new Map();
+      for (const row of json.data) {
+        const code = row[0]?.trim();
+        if (!code) continue;
+        map.set(code, {
+          dividendYield: parseNum(row[3]),
+          peRatio:       parseNum(row[5]),
+          pbRatio:       parseNum(row[6]),
+          reportPeriod:  row[7]?.trim() || null,
+        });
+      }
+      if (map.size > 100) return map;
+    } catch {}
+  }
+  return new Map();
+}
+
+async function getTWSEInstitutional() {
+  try {
+    const r = await fetchWithTimeout(
+      'https://www.twse.com.tw/rwd/zh/fund/T86?response=json&selectType=ALL', {}, 15000
+    );
+    if (!r.ok) return new Map();
+    const json = await r.json();
+    if (json.stat !== 'OK' || !json.data?.length) return new Map();
+    const map = new Map();
+    for (const row of json.data) {
+      const code = row[0]?.trim();
+      if (!code || !/^\d{4,6}$/.test(code)) continue;
+      map.set(code, {
+        foreignNet: parseNum(row[4]),
+        trustNet:   parseNum(row[10]),
+        dealerNet:  parseNum(row[11]),
+        totalNet:   parseNum(row[18]),
+      });
+    }
+    return map;
+  } catch { return new Map(); }
+}
+
+async function fetchHistory(code) {
+  const ticker = code + '.TW';
+  try {
+    const r = await fetchWithTimeout(
+      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=6mo&interval=1d&includePrePost=false`,
+      {}, 10000
+    );
+    if (!r.ok) return null;
+    const json = await r.json();
+    const q = json?.chart?.result?.[0]?.indicators?.quote?.[0];
+    if (!q?.close) return null;
+    const closes = [], volumes = [], highs = [], lows = [];
+    for (let i = 0; i < q.close.length; i++) {
+      if (q.close[i] != null && !isNaN(q.close[i])) {
+        closes.push(q.close[i]);
+        volumes.push(q.volume?.[i] ?? null);
+        highs.push(q.high?.[i]  ?? q.close[i]);
+        lows.push(q.low?.[i]   ?? q.close[i]);
+      }
+    }
+    return closes.length >= 15 ? { closes, volumes, highs, lows } : null;
+  } catch { return null; }
+}
+
+// ===================== SCORING =====================
+function scoreDayTrade(s) {
+  let sc = 0;
+  const { close, open, high, low, value, changeDir, rsi, kdK, kdGolden, volRatio, foreignNet, trustNet } = s;
+  if (!value || value < 5e7) return -99;
+  if (value >= 3e9) sc += 35; else if (value >= 1e9) sc += 28; else if (value >= 4e8) sc += 20; else if (value >= 1e8) sc += 12; else sc += 4;
+  const range = open > 0 ? (high - low) / open * 100 : 0;
+  if (range >= 6) sc += 30; else if (range >= 4) sc += 22; else if (range >= 3) sc += 15; else if (range >= 2) sc += 8; else if (range < 1) sc -= 15;
+  if (close >= 15 && close <= 250) sc += 15; else if (close >= 8) sc += 6;
+  if (changeDir === '+') sc += 8; else if (changeDir === '-') sc += 4;
+  if (rsi != null) { if (rsi >= 40 && rsi <= 68) sc += 15; else if (rsi >= 30 && rsi <= 75) sc += 5; else sc -= 10; }
+  if (volRatio != null) { if (volRatio >= 2) sc += 12; else if (volRatio >= 1.5) sc += 8; else if (volRatio >= 1.2) sc += 4; else if (volRatio < 0.7) sc -= 8; }
+  if (kdK != null) { if (kdK < 20) sc += 5; else if (kdK <= 75) sc += 5; else sc -= 8; }
+  if (kdGolden) sc += 8;
+  if (foreignNet != null && foreignNet > 0) sc += 8;
+  if (trustNet   != null && trustNet   > 0) sc += 6;
+  return sc;
+}
+
+function scoreShortTerm(s) {
+  let sc = 0;
+  const { close, value, changeDir, ma20, ma50, rsi, rsiTrend, macdHist, macdHistChange, peRatio,
+          kdK, kdGolden, kdDead, maAlign, volRatio, bbPct, foreignNet, trustNet } = s;
+  if (!value || value < 3e7) return -99;
+  if (rsi != null) { if (rsi >= 50 && rsi <= 65) sc += 25; else if (rsi >= 40 && rsi < 50) sc += 18; else if (rsi >= 30 && rsi < 40) sc += 10; else if (rsi > 65 && rsi <= 72) sc += 8; else if (rsi > 72) sc -= 15; }
+  if (rsiTrend != null) { if (rsiTrend > 5) sc += 18; else if (rsiTrend > 0) sc += 8; }
+  if (macdHist != null) { if (macdHist > 0) sc += 15; if (macdHistChange > 0) sc += 12; }
+  if (ma20 != null && close > ma20) sc += 20;
+  if (ma50 != null && close > ma50) sc += 10;
+  if (changeDir === '+') sc += 8;
+  if (peRatio != null && peRatio > 0 && peRatio <= 20) sc += 8;
+  if (kdGolden) sc += 18;
+  else if (kdDead) sc -= 15;
+  else if (kdK != null) { if (kdK >= 20 && kdK <= 70) sc += 5; else if (kdK > 80) sc -= 8; }
+  if (maAlign != null) { if (maAlign === 3) sc += 15; else if (maAlign === 2) sc += 8; else if (maAlign === 0) sc -= 8; }
+  if (volRatio != null) { if (volRatio >= 1.5) sc += 10; else if (volRatio >= 1.2) sc += 5; else if (volRatio < 0.7) sc -= 5; }
+  if (bbPct != null) { if (bbPct < 0.3) sc += 10; else if (bbPct < 0.6) sc += 5; else if (bbPct > 0.85) sc -= 10; }
+  if (foreignNet != null) {
+    if (foreignNet > 1000000) sc += 25; else if (foreignNet > 200000) sc += 18; else if (foreignNet > 0) sc += 10;
+    else if (foreignNet < -1000000) sc -= 12; else if (foreignNet < 0) sc -= 5;
+  }
+  if (trustNet != null) {
+    if (trustNet > 200000) sc += 18; else if (trustNet > 50000) sc += 12; else if (trustNet > 0) sc += 6;
+    else if (trustNet < -200000) sc -= 10; else if (trustNet < 0) sc -= 4;
+  }
+  return sc;
+}
+
+function scoreLongTerm(s) {
+  let sc = 0;
+  const { close, value, dividendYield, peRatio, pbRatio, ma50, rsi, volatility, maAlign, bbWidth, foreignNet, trustNet } = s;
+  if (!value || value < 1e7) return -99;
+  if (dividendYield >= 6) sc += 40; else if (dividendYield >= 4) sc += 30; else if (dividendYield >= 2.5) sc += 15; else if (!dividendYield || dividendYield < 1) sc -= 10;
+  if (peRatio > 0) { if (peRatio <= 10) sc += 25; else if (peRatio <= 15) sc += 18; else if (peRatio <= 20) sc += 10; else if (peRatio > 30) sc -= 10; }
+  if (pbRatio > 0) { if (pbRatio <= 1.2) sc += 20; else if (pbRatio <= 2) sc += 12; else if (pbRatio > 3) sc -= 5; }
+  if (volatility != null) { if (volatility < 1.2) sc += 15; else if (volatility < 2) sc += 8; else if (volatility > 4) sc -= 8; }
+  if (ma50 != null && close > ma50) sc += 10;
+  if (rsi != null && rsi >= 40 && rsi <= 65) sc += 5;
+  if (maAlign != null) { if (maAlign === 3) sc += 10; else if (maAlign >= 2) sc += 5; }
+  if (bbWidth != null && bbWidth < 0.1) sc += 5;
+  if (foreignNet != null) {
+    if (foreignNet > 500000) sc += 15; else if (foreignNet > 0) sc += 8; else if (foreignNet < -1000000) sc -= 10;
+  }
+  if (trustNet != null && trustNet > 0) sc += 5;
+  return sc;
+}
+
+function scoreUndervalued(s) {
+  let sc = 0;
+  const { peRatio, pbRatio, dividendYield, rsi } = s;
+  if (peRatio != null && peRatio > 0) {
+    if      (peRatio < 8)  sc += 35;
+    else if (peRatio < 12) sc += 28;
+    else if (peRatio < 15) sc += 20;
+    else if (peRatio < 20) sc += 10;
+    else if (peRatio < 25) sc += 3;
+  }
+  if (pbRatio != null && pbRatio > 0) {
+    if      (pbRatio < 0.8) sc += 25;
+    else if (pbRatio < 1.2) sc += 20;
+    else if (pbRatio < 1.5) sc += 14;
+    else if (pbRatio < 2.0) sc += 7;
+    else if (pbRatio < 3.0) sc += 2;
+  }
+  if (dividendYield != null && dividendYield > 0) {
+    if      (dividendYield >= 7) sc += 25;
+    else if (dividendYield >= 5) sc += 20;
+    else if (dividendYield >= 4) sc += 14;
+    else if (dividendYield >= 3) sc += 9;
+    else if (dividendYield >= 2) sc += 3;
+  }
+  if (rsi != null) {
+    if      (rsi < 30) sc += 12;
+    else if (rsi < 40) sc += 8;
+    else if (rsi < 50) sc += 4;
+  }
+  return sc;
+}
+
+// ===================== CACHE =====================
+const CACHE_KEY = 'jibei_screener_v1';
+const CACHE_TTL = 20 * 60 * 1000;
+
+function getCache() {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const { ts, data } = JSON.parse(raw);
+    if (Date.now() - ts > CACHE_TTL) { localStorage.removeItem(CACHE_KEY); return null; }
+    return data;
+  } catch { return null; }
+}
+
+function setCache(data) {
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data })); } catch {}
+}
+
+// ===================== MAIN SCREENER =====================
+async function screenStocks(onProgress) {
+  const cached = getCache();
+  if (cached) return cached;
+
+  onProgress(2, '取得大盤行情資料…');
+  const [{ stocks: daily, date: dataDate }, fundMap, instMap] = await Promise.all([
+    getTWSEDailyAll(), getTWSEFundamentalsAll(), getTWSEInstitutional()
+  ]);
+
+  if (daily.length === 0) throw new Error('無法取得 TWSE 資料，請稍後再試');
+
+  onProgress(12, `取得 ${daily.length} 檔資料，建立評分候選…`);
+
+  const merged = daily.map(s => ({
+    ...s,
+    dividendYield: fundMap.get(s.code)?.dividendYield ?? null,
+    peRatio:       fundMap.get(s.code)?.peRatio ?? null,
+    pbRatio:       fundMap.get(s.code)?.pbRatio ?? null,
+    reportPeriod:  fundMap.get(s.code)?.reportPeriod ?? null,
+    foreignNet:    instMap.get(s.code)?.foreignNet ?? null,
+    trustNet:      instMap.get(s.code)?.trustNet   ?? null,
+    dealerNet:     instMap.get(s.code)?.dealerNet  ?? null,
+    totalNet:      instMap.get(s.code)?.totalNet   ?? null,
+  }));
+
+  const byValue = [...merged].sort((a, b) => (b.value||0) - (a.value||0));
+  const dtCodes = byValue.slice(0, 60).map(s => s.code);
+  const stCodes = byValue.filter(s => s.close >= 8).slice(0, 80).map(s => s.code);
+  const ltCodes = merged
+    .filter(s => s.dividendYield > 1.5 && (s.peRatio == null || (s.peRatio > 0 && s.peRatio < 40)))
+    .sort((a, b) => (b.dividendYield||0) - (a.dividendYield||0))
+    .slice(0, 60).map(s => s.code);
+  const uvCodes = merged
+    .filter(s => {
+      if (!/^[1-9]\d{3}$/.test(s.code)) return false;
+      const pe = s.peRatio, pb = s.pbRatio, yl = s.dividendYield;
+      if (!pe && !pb && !yl) return false;
+      if (pe != null && (pe <= 0 || pe > 100)) return false;
+      if (pb != null && (pb <= 0 || pb > 50)) return false;
+      return scoreUndervalued(s) >= 20;
+    })
+    .sort((a, b) => scoreUndervalued(b) - scoreUndervalued(a))
+    .slice(0, 60).map(s => s.code);
+
+  const allCodes = [...new Set([...dtCodes, ...stCodes, ...ltCodes, ...uvCodes])];
+
+  const techMap = new Map();
+  const total = allCodes.length;
+  let done = 0;
+  const BATCH = 5;
+  for (let i = 0; i < allCodes.length; i += BATCH) {
+    await Promise.allSettled(allCodes.slice(i, i + BATCH).map(async code => {
+      const hist = await fetchHistory(code);
+      if (hist) techMap.set(code, calcTech(hist));
+      done++;
+    }));
+    const pct = 12 + Math.round(done / total * 75);
+    onProgress(pct, `技術分析 ${done} / ${total} 檔`);
+    if (i + BATCH < allCodes.length) await new Promise(r => setTimeout(r, 180));
+  }
+
+  onProgress(90, '計算排名…');
+
+  const codeMap = new Map(merged.map(s => [s.code, s]));
+  const enrich  = code => ({ ...codeMap.get(code), ...(techMap.get(code) || {}) });
+
+  const dayTrade    = dtCodes.map(c => ({ ...enrich(c), _score: scoreDayTrade(enrich(c)) })).filter(s => s._score > 10).sort((a, b) => b._score - a._score).slice(0, 10);
+  const shortTerm   = stCodes.map(c => ({ ...enrich(c), _score: scoreShortTerm(enrich(c)) })).filter(s => s._score > 15).sort((a, b) => b._score - a._score).slice(0, 10);
+  const longTerm    = ltCodes.map(c => ({ ...enrich(c), _score: scoreLongTerm(enrich(c)) })).filter(s => s._score > 20).sort((a, b) => b._score - a._score).slice(0, 10);
+  const undervalued = uvCodes.map(c => ({ ...enrich(c), _score: scoreUndervalued(enrich(c)) })).filter(s => s._score > 0).sort((a, b) => b._score - a._score).slice(0, 10);
+
+  const result = { dayTrade, shortTerm, longTerm, undervalued, updatedAt: new Date().toISOString(), dataDate };
+  setCache(result);
+  onProgress(100, '完成！');
+  return result;
+}
+
+// ===================== UI =====================
+function section(icon, title, sub, stocks, type) {
+  const cards = stocks?.length
+    ? stocks.map((s, i) => card(s, i + 1, type)).join('')
+    : `<div class="empty">今日無符合條件的股票</div>`;
+  return `<div class="section">
+    <div class="section-head">
+      <span class="section-icon">${icon}</span>
+      <span class="section-title">${title}</span>
+      <span class="section-sub">${sub}</span>
+    </div>
+    <div class="grid">${cards}</div>
+  </div>`;
+}
+
+const ANALYSIS_URL = 'https://cashwangtfc-cmyk.github.io/cash-stock-analysis/';
+
+function card(s, rank, type) {
+  const up = s.changePct > 0, dn = s.changePct < 0;
+  const cls = up ? 'up' : dn ? 'down' : 'flat';
+  const arrow = up ? '▲' : dn ? '▼' : '—';
+  const sign = up ? '+' : '';
+  const rankCls = rank === 1 ? 'gold' : rank === 2 ? 'silver' : rank === 3 ? 'bronze' : '';
+  const valStr = s.value ? s.value >= 1e9 ? (s.value/1e9).toFixed(1)+'億' : (s.value/1e8).toFixed(1)+'億' : '—';
+  const range  = s.open > 0 ? ((s.high - s.low) / s.open * 100).toFixed(1) + '%' : '—';
+  const rsiCls = s.rsi == null ? '' : s.rsi > 70 ? 'bad' : s.rsi < 35 ? 'warn' : 'good';
+  const fmt = (v, d = 1) => v != null ? parseFloat(v.toFixed(d)) : null;
+  const mv  = (label, val, c = '') => val != null
+    ? `<div class="scard-metric"><span class="scard-ml">${label}</span><span class="scard-mv ${c}">${val}</span></div>` : '';
+
+  const kdTag = s.kdK != null
+    ? (s.kdGolden ? `金叉 K${s.kdK.toFixed(0)}` : s.kdDead ? `死叉 K${s.kdK.toFixed(0)}` : `K${s.kdK.toFixed(0)}/D${s.kdD?.toFixed(0)}`)
+    : null;
+  const kdCls = s.kdGolden ? 'good' : s.kdDead ? 'bad' : s.kdK > 80 ? 'warn' : '';
+  const volRatioStr = s.volRatio != null ? s.volRatio.toFixed(2) + 'x' : null;
+  const volCls = s.volRatio >= 2 ? 'good' : s.volRatio < 0.7 ? 'bad' : '';
+  const fmtInst = v => {
+    if (v == null) return null;
+    const lots = Math.round(v / 1000);
+    if (lots === 0) return '持平';
+    const abs = Math.abs(lots), sg = lots > 0 ? '+' : '-';
+    if (abs >= 10000) return sg + (abs/10000).toFixed(1) + '萬張';
+    if (abs >= 1000)  return sg + (abs/1000).toFixed(1) + '千張';
+    return sg + abs + '張';
+  };
+  const instCls = v => v == null ? '' : v > 0 ? 'good' : v < 0 ? 'bad' : '';
+
+  let metrics = '';
+  if (type === 'dt') {
+    metrics = [
+      mv('成交金額', valStr),
+      mv('振幅',   range),
+      mv('量比',   volRatioStr, volCls),
+      mv('RSI',    fmt(s.rsi, 1), rsiCls),
+      mv('KD',     kdTag, kdCls),
+      mv('外資',   fmtInst(s.foreignNet), instCls(s.foreignNet)),
+    ].join('');
+  } else if (type === 'st') {
+    const maTag  = s.ma20 != null ? (s.close > s.ma20 ? '✓ 站上' : '✗ 跌破') : null;
+    const maCls  = s.ma20 != null ? (s.close > s.ma20 ? 'good' : 'bad') : '';
+    const macdTag = s.macdHist != null ? (s.macdHist > 0 ? '多頭' : '空頭') : null;
+    const macdCls = s.macdHist != null ? (s.macdHist > 0 ? 'good' : 'bad') : '';
+    const maAlignTag = s.maAlign != null ? ['空頭排列','弱勢','多頭趨勢','強多排列'][s.maAlign] : null;
+    const maAlignCls = s.maAlign === 3 ? 'good' : s.maAlign === 0 ? 'bad' : '';
+    metrics = [
+      mv('RSI',    fmt(s.rsi, 1), rsiCls),
+      mv('KD',     kdTag, kdCls),
+      mv('MACD',   macdTag, macdCls),
+      mv('均線排列', maAlignTag, maAlignCls),
+      mv('外資',   fmtInst(s.foreignNet), instCls(s.foreignNet)),
+      mv('投信',   fmtInst(s.trustNet), instCls(s.trustNet)),
+    ].join('');
+  } else if (type === 'uv') {
+    const yCls  = s.dividendYield >= 5 ? 'good' : s.dividendYield >= 3 ? '' : 'warn';
+    const peCls = s.peRatio > 0 && s.peRatio < 12 ? 'good' : s.peRatio > 0 && s.peRatio <= 20 ? '' : 'bad';
+    const pbCls = s.pbRatio > 0 && s.pbRatio < 1.2 ? 'good' : s.pbRatio > 0 && s.pbRatio <= 2 ? '' : 'bad';
+    metrics = [
+      mv('殖利率', s.dividendYield != null ? s.dividendYield.toFixed(2)+'%' : null, yCls),
+      mv('本益比', fmt(s.peRatio, 1), peCls),
+      mv('股淨比', fmt(s.pbRatio, 2), pbCls),
+      mv('RSI',    fmt(s.rsi, 1), rsiCls),
+      mv('評分',   s._score != null ? s._score + '分' : null, 'good'),
+      mv('財報期', s.reportPeriod || null),
+    ].join('');
+  } else {
+    const yCls  = s.dividendYield >= 4 ? 'good' : s.dividendYield >= 2.5 ? '' : 'warn';
+    const peCls = s.peRatio > 0 && s.peRatio <= 15 ? 'good' : '';
+    const pbCls = s.pbRatio > 0 && s.pbRatio <= 1.5 ? 'good' : '';
+    metrics = [
+      mv('殖利率', s.dividendYield != null ? s.dividendYield.toFixed(2)+'%' : null, yCls),
+      mv('本益比', fmt(s.peRatio, 1), peCls),
+      mv('股淨比', fmt(s.pbRatio, 2), pbCls),
+      mv('波動率', s.volatility != null ? s.volatility.toFixed(2)+'%' : null),
+      mv('外資',   fmtInst(s.foreignNet), instCls(s.foreignNet)),
+    ].join('');
+  }
+
+  return `<div class="scard" onclick="window.open('${ANALYSIS_URL}?q=${s.code}')" title="點擊查看 ${s.name} 詳細分析">
+    <div class="scard-rank ${rankCls}">${rank}</div>
+    <div class="scard-code">${s.code}</div>
+    <div class="scard-name">${s.name}</div>
+    <div class="scard-price ${cls}">NT$${(s.close||0).toLocaleString()}</div>
+    <div class="scard-chg ${cls}">${arrow} ${sign}${s.changePct}%</div>
+    <div class="scard-divider"></div>
+    <div class="scard-metrics">${metrics}</div>
+  </div>`;
+}
+
+// ===================== LOAD =====================
+function setProgress(pct, status) {
+  document.getElementById('progress-fill').style.width = pct + '%';
+  document.getElementById('progress-status').textContent = status;
+  if (pct > 0 && pct < 100) {
+    document.getElementById('progress-wrap').style.display = 'block';
+    document.getElementById('loading-text').textContent = '正在掃描全市場技術指標…';
+  }
+}
+
+async function load(force = false) {
+  document.getElementById('loading').style.display = 'block';
+  document.getElementById('content').style.display = 'none';
+  document.getElementById('error').style.display = 'none';
+  document.getElementById('progress-wrap').style.display = 'none';
+  document.getElementById('loading-text').textContent = '正在取得市場資料…';
+  document.getElementById('progress-fill').style.width = '0%';
+  const btn = document.getElementById('refresh-btn');
+  btn.disabled = true;
+
+  if (force) { try { localStorage.removeItem(CACHE_KEY); } catch {} }
+
+  try {
+    const data = await screenStocks(setProgress);
+
+    const dateStr = data.dataDate
+      ? `資料：${data.dataDate.slice(0,4)}/${data.dataDate.slice(4,6)}/${data.dataDate.slice(6,8)}`
+      : '';
+    const updStr = data.updatedAt
+      ? `更新：${new Date(data.updatedAt).toLocaleString('zh-TW', { hour12: false })}`
+      : '';
+    document.getElementById('meta-text').textContent = [dateStr, updStr].filter(Boolean).join('　');
+
+    document.getElementById('content').innerHTML =
+      `<div class="notice">⚡ 點擊股票卡片，前往「Cash賺錢錢」查看 AI 詳細分析</div>` + [
+        section('🔥', '當沖精選', '今日振幅大、成交活躍', data.dayTrade, 'dt'),
+        section('📈', '短期上漲潛力', 'RSI 健康 + MACD 多頭 + 站上均線', data.shortTerm, 'st'),
+        section('💎', '長期穩定配息', '高殖利率 + 合理本益比 + 低波動', data.longTerm, 'lt'),
+        section('🔍', '被低估台股', 'PE + PB + 殖利率 + RSI 綜合評分', data.undervalued, 'uv'),
+      ].join('');
+
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('content').style.display = 'block';
+  } catch (e) {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('error').style.display = 'block';
+    document.getElementById('error').textContent = '錯誤：' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+load();
+</script>
+</body>
+</html>
