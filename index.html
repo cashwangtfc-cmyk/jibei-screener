@@ -90,7 +90,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Noto Sans TC','Microsoft Jhen
     <div class="logo-icon">📊</div>
     <div class="logo-text">
       <h1>吉開北丸發財系統</h1>
-      <p>當沖精選 · 短期潛力 · 長期配息 · 低估掃描</p>
+      <p>當沖精選 · 短期潛力 · 長期配息 · 低估掃描 · ATR · ADX · OBV · 融資券</p>
     </div>
   </div>
   <div class="header-right">
@@ -226,6 +226,74 @@ function calcBB(closes, period = 20) {
   return { bbPct: bw > 0 ? (price - lower) / bw : 0.5, bbWidth: bw > 0 ? bw / mid : 0 };
 }
 
+function calcATR(highs, lows, closes, period = 14) {
+  const n = Math.min(closes.length, highs.length, lows.length);
+  if (n < period + 1) return null;
+  const trs = [];
+  for (let i = 1; i < n; i++)
+    trs.push(Math.max(highs[i]-lows[i], Math.abs(highs[i]-closes[i-1]), Math.abs(lows[i]-closes[i-1])));
+  if (trs.length < period) return null;
+  let atr = trs.slice(0, period).reduce((a,b) => a+b, 0) / period;
+  for (let i = period; i < trs.length; i++) atr = (atr*(period-1)+trs[i])/period;
+  const price = closes[closes.length-1];
+  return { atr, atrPct: price > 0 ? atr/price*100 : null };
+}
+
+function calcOBV(closes, volumes) {
+  if (!closes || !volumes || closes.length < 6) return null;
+  const n = Math.min(closes.length, volumes.length);
+  let obv = 0;
+  const obvArr = [0];
+  for (let i = 1; i < n; i++) {
+    if (volumes[i] != null) {
+      if (closes[i] > closes[i-1]) obv += volumes[i];
+      else if (closes[i] < closes[i-1]) obv -= volumes[i];
+    }
+    obvArr.push(obv);
+  }
+  const last = obvArr[obvArr.length-1], prev5 = obvArr.length >= 6 ? obvArr[obvArr.length-6] : obvArr[0];
+  return last > prev5 * 1.005 ? 1 : last < prev5 * 0.995 ? -1 : 0;
+}
+
+function calcADX(highs, lows, closes, period = 14) {
+  const n = Math.min(closes.length, highs.length, lows.length);
+  if (n < period * 2 + 1) return null;
+  const plusDM = [], minusDM = [], trs = [];
+  for (let i = 1; i < n; i++) {
+    const up = highs[i]-highs[i-1], down = lows[i-1]-lows[i];
+    plusDM.push(up > down && up > 0 ? up : 0);
+    minusDM.push(down > up && down > 0 ? down : 0);
+    trs.push(Math.max(highs[i]-lows[i], Math.abs(highs[i]-closes[i-1]), Math.abs(lows[i]-closes[i-1])));
+  }
+  const ws = (arr, p) => {
+    let s = arr.slice(0,p).reduce((a,b)=>a+b,0);
+    const r = [s];
+    for (let i = p; i < arr.length; i++) { s = s-s/p+arr[i]; r.push(s); }
+    return r;
+  };
+  const sTR = ws(trs,period), sPDM = ws(plusDM,period), sMDM = ws(minusDM,period);
+  const dx = sTR.map((tr,i) => {
+    if (!tr) return 0;
+    const pd = 100*sPDM[i]/tr, md = 100*sMDM[i]/tr;
+    return (pd+md) ? 100*Math.abs(pd-md)/(pd+md) : 0;
+  });
+  if (dx.length < period) return null;
+  let adx = dx.slice(0,period).reduce((a,b)=>a+b,0)/period;
+  for (let i = period; i < dx.length; i++) adx = (adx*(period-1)+dx[i])/period;
+  const lastTR = sTR[sTR.length-1];
+  const pdi = lastTR ? 100*sPDM[sPDM.length-1]/lastTR : 0;
+  const mdi = lastTR ? 100*sMDM[sMDM.length-1]/lastTR : 0;
+  return { adx, adxUp: pdi > mdi };
+}
+
+function calcWilliamsR(highs, lows, closes, period = 14) {
+  const n = Math.min(closes.length, highs.length, lows.length);
+  if (n < period) return null;
+  const hh = Math.max(...highs.slice(n-period)), ll = Math.min(...lows.slice(n-period));
+  if (hh === ll) return null;
+  return (hh - closes[n-1]) / (hh-ll) * -100;
+}
+
 function calcTech(history) {
   const { closes, volumes, highs, lows } = history;
   if (!closes || closes.length < 15) return {};
@@ -274,6 +342,26 @@ function calcTech(history) {
     const rets = sl.slice(1).map((c, i) => (c - sl[i]) / sl[i]);
     const mean = rets.reduce((a, b) => a + b, 0) / rets.length;
     t.volatility = Math.sqrt(rets.reduce((a, b) => a + (b - mean) ** 2, 0) / rets.length) * 100;
+  }
+
+  if (highs && lows && closes.length >= 15) {
+    const atrResult = calcATR(highs, lows, closes);
+    if (atrResult) { t.atr = atrResult.atr; t.atrPct = atrResult.atrPct; }
+  }
+
+  if (volumes?.length >= 6) {
+    const obvResult = calcOBV(closes, volumes);
+    if (obvResult != null) t.obvTrend = obvResult;
+  }
+
+  if (highs && lows && closes.length >= 29) {
+    const adxResult = calcADX(highs, lows, closes);
+    if (adxResult) { t.adx = adxResult.adx; t.adxUp = adxResult.adxUp; }
+  }
+
+  if (highs && lows && closes.length >= 14) {
+    const wr = calcWilliamsR(highs, lows, closes);
+    if (wr != null) t.williamsR = wr;
   }
 
   return t;
@@ -366,6 +454,39 @@ async function getTWSEInstitutional() {
   } catch { return new Map(); }
 }
 
+async function getTWSEMarginData() {
+  const urls = [
+    'https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN?selectType=ALL&response=json',
+    'https://www.twse.com.tw/exchangeReport/MI_MARGN?selectType=ALL&response=json',
+  ];
+  for (const url of urls) {
+    try {
+      const r = await fetchWithTimeout(url, {}, 15000);
+      if (!r.ok) continue;
+      const json = await r.json();
+      if (json.stat !== 'OK' || !json.data?.length) continue;
+      const map = new Map();
+      for (const row of json.data) {
+        const code = row[0]?.trim();
+        if (!code || !/^\d{4,6}$/.test(code)) continue;
+        const marginBuy  = parseNum(row[2]);
+        const marginSell = parseNum(row[3]);
+        const marginBal  = parseNum(row[5]);
+        const marginPrev = parseNum(row[6]);
+        const shortBal   = parseNum(row[13]);
+        const shortPrev  = parseNum(row[14]);
+        map.set(code, {
+          marginNet: (marginBuy != null && marginSell != null) ? marginBuy - marginSell : null,
+          marginChg: (marginBal != null && marginPrev != null) ? marginBal - marginPrev : null,
+          shortChg:  (shortBal  != null && shortPrev  != null) ? shortBal  - shortPrev  : null,
+        });
+      }
+      if (map.size > 100) return map;
+    } catch {}
+  }
+  return new Map();
+}
+
 async function fetchHistory(code) {
   const ticker = code + '.TW';
   try {
@@ -393,17 +514,25 @@ async function fetchHistory(code) {
 // ===================== SCORING =====================
 function scoreDayTrade(s) {
   let sc = 0;
-  const { close, open, high, low, value, changeDir, rsi, kdK, kdGolden, volRatio, foreignNet, trustNet } = s;
+  const { close, open, high, low, value, changeDir, rsi, kdK, kdGolden, volRatio, foreignNet, trustNet,
+          atrPct, obvTrend, marginNet, shortChg } = s;
   if (!value || value < 5e7) return -99;
   if (value >= 3e9) sc += 35; else if (value >= 1e9) sc += 28; else if (value >= 4e8) sc += 20; else if (value >= 1e8) sc += 12; else sc += 4;
   const range = open > 0 ? (high - low) / open * 100 : 0;
-  if (range >= 6) sc += 30; else if (range >= 4) sc += 22; else if (range >= 3) sc += 15; else if (range >= 2) sc += 8; else if (range < 1) sc -= 15;
+  if (range >= 6) sc += 22; else if (range >= 4) sc += 16; else if (range >= 3) sc += 10; else if (range >= 2) sc += 5; else if (range < 1) sc -= 10;
+  // ATR% 比振幅更穩定的波動評估
+  if (atrPct != null) { if (atrPct >= 2.5 && atrPct <= 5.5) sc += 18; else if (atrPct >= 1.5) sc += 10; else if (atrPct < 1) sc -= 12; else if (atrPct > 7) sc -= 6; }
   if (close >= 15 && close <= 250) sc += 15; else if (close >= 8) sc += 6;
   if (changeDir === '+') sc += 8; else if (changeDir === '-') sc += 4;
   if (rsi != null) { if (rsi >= 40 && rsi <= 68) sc += 15; else if (rsi >= 30 && rsi <= 75) sc += 5; else sc -= 10; }
   if (volRatio != null) { if (volRatio >= 2) sc += 12; else if (volRatio >= 1.5) sc += 8; else if (volRatio >= 1.2) sc += 4; else if (volRatio < 0.7) sc -= 8; }
   if (kdK != null) { if (kdK < 20) sc += 5; else if (kdK <= 75) sc += 5; else sc -= 8; }
   if (kdGolden) sc += 8;
+  // OBV 量價確認
+  if (obvTrend === 1) sc += 8; else if (obvTrend === -1) sc -= 5;
+  // 融資：淨增加代表散戶追高，券空回補代表軋空機會
+  if (marginNet != null) { if (marginNet > 500) sc += 5; else if (marginNet < -500) sc -= 3; }
+  if (shortChg != null && shortChg < -100) sc += 8; // 融券大量回補 = 軋空訊號
   if (foreignNet != null && foreignNet > 0) sc += 8;
   if (trustNet   != null && trustNet   > 0) sc += 6;
   return sc;
@@ -412,7 +541,8 @@ function scoreDayTrade(s) {
 function scoreShortTerm(s) {
   let sc = 0;
   const { close, value, changeDir, ma20, ma50, rsi, rsiTrend, macdHist, macdHistChange, peRatio,
-          kdK, kdGolden, kdDead, maAlign, volRatio, bbPct, foreignNet, trustNet } = s;
+          kdK, kdGolden, kdDead, maAlign, volRatio, bbPct, foreignNet, trustNet,
+          adx, adxUp, obvTrend } = s;
   if (!value || value < 3e7) return -99;
   if (rsi != null) { if (rsi >= 50 && rsi <= 65) sc += 25; else if (rsi >= 40 && rsi < 50) sc += 18; else if (rsi >= 30 && rsi < 40) sc += 10; else if (rsi > 65 && rsi <= 72) sc += 8; else if (rsi > 72) sc -= 15; }
   if (rsiTrend != null) { if (rsiTrend > 5) sc += 18; else if (rsiTrend > 0) sc += 8; }
@@ -427,6 +557,10 @@ function scoreShortTerm(s) {
   if (maAlign != null) { if (maAlign === 3) sc += 15; else if (maAlign === 2) sc += 8; else if (maAlign === 0) sc -= 8; }
   if (volRatio != null) { if (volRatio >= 1.5) sc += 10; else if (volRatio >= 1.2) sc += 5; else if (volRatio < 0.7) sc -= 5; }
   if (bbPct != null) { if (bbPct < 0.3) sc += 10; else if (bbPct < 0.6) sc += 5; else if (bbPct > 0.85) sc -= 10; }
+  // ADX 趨勢強度：過濾橫盤假訊號
+  if (adx != null) { if (adx >= 25 && adxUp) sc += 22; else if (adx >= 20 && adxUp) sc += 12; else if (adx >= 15 && adxUp) sc += 6; else if (adx < 15) sc -= 12; }
+  // OBV 量價確認：量先行於價
+  if (obvTrend === 1) sc += 15; else if (obvTrend === -1) sc -= 12;
   if (foreignNet != null) {
     if (foreignNet > 1000000) sc += 25; else if (foreignNet > 200000) sc += 18; else if (foreignNet > 0) sc += 10;
     else if (foreignNet < -1000000) sc -= 12; else if (foreignNet < 0) sc -= 5;
@@ -440,7 +574,7 @@ function scoreShortTerm(s) {
 
 function scoreLongTerm(s) {
   let sc = 0;
-  const { close, value, dividendYield, peRatio, pbRatio, ma50, rsi, volatility, maAlign, bbWidth, foreignNet, trustNet } = s;
+  const { close, value, dividendYield, peRatio, pbRatio, ma50, rsi, volatility, maAlign, bbWidth, foreignNet, trustNet, obvTrend } = s;
   if (!value || value < 1e7) return -99;
   if (dividendYield >= 6) sc += 40; else if (dividendYield >= 4) sc += 30; else if (dividendYield >= 2.5) sc += 15; else if (!dividendYield || dividendYield < 1) sc -= 10;
   if (peRatio > 0) { if (peRatio <= 10) sc += 25; else if (peRatio <= 15) sc += 18; else if (peRatio <= 20) sc += 10; else if (peRatio > 30) sc -= 10; }
@@ -450,6 +584,7 @@ function scoreLongTerm(s) {
   if (rsi != null && rsi >= 40 && rsi <= 65) sc += 5;
   if (maAlign != null) { if (maAlign === 3) sc += 10; else if (maAlign >= 2) sc += 5; }
   if (bbWidth != null && bbWidth < 0.1) sc += 5;
+  if (obvTrend === 1) sc += 5; else if (obvTrend === -1) sc -= 3;
   if (foreignNet != null) {
     if (foreignNet > 500000) sc += 15; else if (foreignNet > 0) sc += 8; else if (foreignNet < -1000000) sc -= 10;
   }
@@ -486,11 +621,18 @@ function scoreUndervalued(s) {
     else if (rsi < 40) sc += 8;
     else if (rsi < 50) sc += 4;
   }
+  // Williams %R：深度超賣代表極度低估、潛在反彈機會
+  if (s.williamsR != null) {
+    if      (s.williamsR < -90) sc += 15;
+    else if (s.williamsR < -80) sc += 10;
+    else if (s.williamsR < -60) sc += 5;
+    else if (s.williamsR > -20) sc -= 5;
+  }
   return sc;
 }
 
 // ===================== CACHE =====================
-const CACHE_KEY = 'jibei_screener_v1';
+const CACHE_KEY = 'jibei_screener_v2';
 const CACHE_TTL = 20 * 60 * 1000;
 
 function getCache() {
@@ -513,8 +655,8 @@ async function screenStocks(onProgress) {
   if (cached) return cached;
 
   onProgress(2, '取得大盤行情資料…');
-  const [{ stocks: daily, date: dataDate }, fundMap, instMap] = await Promise.all([
-    getTWSEDailyAll(), getTWSEFundamentalsAll(), getTWSEInstitutional()
+  const [{ stocks: daily, date: dataDate }, fundMap, instMap, marginMap] = await Promise.all([
+    getTWSEDailyAll(), getTWSEFundamentalsAll(), getTWSEInstitutional(), getTWSEMarginData()
   ]);
 
   if (daily.length === 0) throw new Error('無法取得 TWSE 資料，請稍後再試');
@@ -531,6 +673,9 @@ async function screenStocks(onProgress) {
     trustNet:      instMap.get(s.code)?.trustNet   ?? null,
     dealerNet:     instMap.get(s.code)?.dealerNet  ?? null,
     totalNet:      instMap.get(s.code)?.totalNet   ?? null,
+    marginNet:     marginMap.get(s.code)?.marginNet ?? null,
+    marginChg:     marginMap.get(s.code)?.marginChg ?? null,
+    shortChg:      marginMap.get(s.code)?.shortChg  ?? null,
   }));
 
   const byValue = [...merged].sort((a, b) => (b.value||0) - (a.value||0));
@@ -634,38 +779,55 @@ function card(s, rank, type) {
 
   let metrics = '';
   if (type === 'dt') {
+    const atrTag = s.atrPct != null ? s.atrPct.toFixed(1)+'%' : null;
+    const atrCls = s.atrPct >= 2.5 && s.atrPct <= 5.5 ? 'good' : s.atrPct < 1 ? 'bad' : '';
+    const marginStr = s.marginNet != null ? (s.marginNet > 0 ? '+' : '') + s.marginNet + '張' : null;
+    const marginCls = s.marginNet < -200 ? 'warn' : s.marginNet > 500 ? '' : '';
+    const shortChgStr = s.shortChg != null && s.shortChg !== 0
+      ? (s.shortChg > 0 ? '+' : '') + s.shortChg + '張' : null;
+    const shortChgCls = s.shortChg != null && s.shortChg < -100 ? 'good' : s.shortChg > 100 ? 'bad' : '';
     metrics = [
       mv('成交金額', valStr),
-      mv('振幅',   range),
+      mv('ATR%',   atrTag, atrCls),
       mv('量比',   volRatioStr, volCls),
       mv('RSI',    fmt(s.rsi, 1), rsiCls),
       mv('KD',     kdTag, kdCls),
+      mv('融資',   marginStr, marginCls),
+      mv('融券變化', shortChgStr, shortChgCls),
       mv('外資',   fmtInst(s.foreignNet), instCls(s.foreignNet)),
     ].join('');
   } else if (type === 'st') {
-    const maTag  = s.ma20 != null ? (s.close > s.ma20 ? '✓ 站上' : '✗ 跌破') : null;
-    const maCls  = s.ma20 != null ? (s.close > s.ma20 ? 'good' : 'bad') : '';
     const macdTag = s.macdHist != null ? (s.macdHist > 0 ? '多頭' : '空頭') : null;
     const macdCls = s.macdHist != null ? (s.macdHist > 0 ? 'good' : 'bad') : '';
     const maAlignTag = s.maAlign != null ? ['空頭排列','弱勢','多頭趨勢','強多排列'][s.maAlign] : null;
     const maAlignCls = s.maAlign === 3 ? 'good' : s.maAlign === 0 ? 'bad' : '';
+    const adxTag = s.adx != null
+      ? (s.adx >= 25 ? '強趨勢' : s.adx >= 20 ? '趨勢中' : '震盪') + ` ${s.adx.toFixed(0)}`
+      : null;
+    const adxCls = s.adx >= 25 && s.adxUp ? 'good' : s.adx < 15 ? 'bad' : '';
+    const obvTag = s.obvTrend === 1 ? '量增↑' : s.obvTrend === -1 ? '量縮↓' : s.obvTrend === 0 ? '持平' : null;
+    const obvCls = s.obvTrend === 1 ? 'good' : s.obvTrend === -1 ? 'bad' : '';
     metrics = [
       mv('RSI',    fmt(s.rsi, 1), rsiCls),
       mv('KD',     kdTag, kdCls),
       mv('MACD',   macdTag, macdCls),
+      mv('ADX',    adxTag, adxCls),
+      mv('OBV',    obvTag, obvCls),
       mv('均線排列', maAlignTag, maAlignCls),
       mv('外資',   fmtInst(s.foreignNet), instCls(s.foreignNet)),
-      mv('投信',   fmtInst(s.trustNet), instCls(s.trustNet)),
     ].join('');
   } else if (type === 'uv') {
     const yCls  = s.dividendYield >= 5 ? 'good' : s.dividendYield >= 3 ? '' : 'warn';
     const peCls = s.peRatio > 0 && s.peRatio < 12 ? 'good' : s.peRatio > 0 && s.peRatio <= 20 ? '' : 'bad';
     const pbCls = s.pbRatio > 0 && s.pbRatio < 1.2 ? 'good' : s.pbRatio > 0 && s.pbRatio <= 2 ? '' : 'bad';
+    const wrStr = s.williamsR != null ? s.williamsR.toFixed(0) : null;
+    const wrCls = s.williamsR != null && s.williamsR < -80 ? 'good' : s.williamsR != null && s.williamsR > -20 ? 'bad' : '';
     metrics = [
       mv('殖利率', s.dividendYield != null ? s.dividendYield.toFixed(2)+'%' : null, yCls),
       mv('本益比', fmt(s.peRatio, 1), peCls),
       mv('股淨比', fmt(s.pbRatio, 2), pbCls),
       mv('RSI',    fmt(s.rsi, 1), rsiCls),
+      mv('威廉%R', wrStr, wrCls),
       mv('評分',   s._score != null ? s._score + '分' : null, 'good'),
       mv('財報期', s.reportPeriod || null),
     ].join('');
