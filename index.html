@@ -303,14 +303,22 @@ function calcWilliamsR(highs, lows, closes, period = 14) {
 }
 
 // 台股跳動單位
-function tickRound(price) {
-  if (!price || price <= 0) return price;
-  if (price < 10)   return Math.round(price * 100) / 100;
-  if (price < 50)   return Math.round(price * 20) / 20;   // 0.05
-  if (price < 100)  return Math.round(price * 10) / 10;   // 0.1
-  if (price < 500)  return Math.round(price * 2) / 2;     // 0.5
-  if (price < 1000) return Math.round(price);
-  return Math.round(price / 5) * 5;
+function tickSize(price) {
+  if (price < 10)   return 0.01;
+  if (price < 50)   return 0.05;
+  if (price < 100)  return 0.1;
+  if (price < 500)  return 0.5;
+  if (price < 1000) return 1;
+  return 5;
+}
+function tickFloor(price) {
+  const t = tickSize(price);
+  return Math.floor(price / t) * t;
+}
+// 計算「至少低於現價 minPct%」的限價（向下取到 tick）
+function limitPrice(price, minPct = 1) {
+  const target = price * (1 - minPct / 100);
+  return parseFloat(tickFloor(target).toFixed(4));
 }
 
 function calcAISummary(s, type) {
@@ -318,10 +326,6 @@ function calcAISummary(s, type) {
   const price = s.close || 0;
   let orderType = '限價';
   let suggestPrice = null;
-
-  // 判斷支撐均線（取最近且在現價下方的均線作為限價參考）
-  const supports = [s.ma5, s.ma10, s.ma20].filter(v => v != null && v < price && v > price * 0.97);
-  const nearMA = supports.length ? Math.max(...supports) : null;
 
   if (type === 'dt') {
     if (s.value >= 1e9)      parts.push('成交額超十億');
@@ -332,13 +336,11 @@ function calcAISummary(s, type) {
     if (s.foreignNet > 0)    parts.push('外資買超');
     if (s.volRatio >= 2)     parts.push('爆量');
     if (s.obvTrend === 1)    parts.push('OBV量增');
-    // 當沖：爆量突破或融券回補 → 現價搶進；否則掛略低一檔
+    // 爆量+KD金叉或融券回補 → 現價追；否則掛低 1%
     if (s.kdGolden || (s.volRatio >= 2.5 && s.shortChg < -100)) {
-      orderType = '現價';
-      suggestPrice = price;
+      orderType = '現價'; suggestPrice = price;
     } else {
-      orderType = '限價';
-      suggestPrice = nearMA ? tickRound(nearMA) : tickRound(price * 0.99);
+      orderType = '限價'; suggestPrice = limitPrice(price, 1);
     }
   } else if (type === 'st') {
     if (s.macdHist > 0 && s.macdHistChange > 0) parts.push('MACD多頭擴張');
@@ -349,47 +351,38 @@ function calcAISummary(s, type) {
     if (s.obvTrend === 1)    parts.push('OBV量先行');
     if (s.foreignNet > 1e6)  parts.push('外資大舉買超');
     else if (s.foreignNet > 0) parts.push('外資買超');
-    // 短期：KD金叉+強均線 → 現價；否則等回測均線限價
+    // KD金叉+MACD+強均線三合一 → 現價；否則等回測掛低 2%
     if (s.kdGolden && s.maAlign >= 2 && s.macdHist > 0) {
-      orderType = '現價';
-      suggestPrice = price;
+      orderType = '現價'; suggestPrice = price;
     } else {
-      orderType = '限價';
-      // 回測 MA10 或 MA20 入場
-      const ref = (s.ma10 && s.ma10 < price) ? s.ma10 : (s.ma20 && s.ma20 < price ? s.ma20 : price * 0.98);
-      suggestPrice = tickRound(ref);
+      orderType = '限價'; suggestPrice = limitPrice(price, 2);
     }
   } else if (type === 'lt') {
-    if (s.dividendYield >= 6)       parts.push(`殖利率 ${s.dividendYield.toFixed(1)}% 超高`);
-    else if (s.dividendYield >= 4)  parts.push(`殖利率 ${s.dividendYield.toFixed(1)}% 優異`);
+    if (s.dividendYield >= 6)        parts.push(`殖利率 ${s.dividendYield.toFixed(1)}% 超高`);
+    else if (s.dividendYield >= 4)   parts.push(`殖利率 ${s.dividendYield.toFixed(1)}% 優異`);
     else if (s.dividendYield >= 2.5) parts.push(`殖利率 ${s.dividendYield.toFixed(1)}%`);
-    if (s.peRatio > 0 && s.peRatio <= 12)    parts.push(`本益比 ${s.peRatio.toFixed(0)} 低估`);
+    if (s.peRatio > 0 && s.peRatio <= 12)     parts.push(`本益比 ${s.peRatio.toFixed(0)} 低估`);
     else if (s.peRatio > 0 && s.peRatio <= 18) parts.push(`本益比 ${s.peRatio.toFixed(0)} 合理`);
-    if (s.pbRatio > 0 && s.pbRatio < 1.2)   parts.push('低於淨值');
-    if (s.volatility < 1.5)                  parts.push('低波動穩定');
-    if (s.foreignNet > 5e5)                  parts.push('外資持續布局');
-    // 長期：存股不急，通常限價慢慢等
-    orderType = '限價';
-    const ref = s.ma20 && s.ma20 < price ? s.ma20 : price * 0.97;
-    suggestPrice = tickRound(ref);
+    if (s.pbRatio > 0 && s.pbRatio < 1.2)    parts.push('低於淨值');
+    if (s.volatility < 1.5)                   parts.push('低波動穩定');
+    if (s.foreignNet > 5e5)                   parts.push('外資持續布局');
+    // 長期存股不急，等回測 3%
+    orderType = '限價'; suggestPrice = limitPrice(price, 3);
   } else { // uv
-    if (s.peRatio > 0 && s.peRatio < 8)       parts.push(`PE ${s.peRatio.toFixed(1)} 極低`);
+    if (s.peRatio > 0 && s.peRatio < 8)        parts.push(`PE ${s.peRatio.toFixed(1)} 極低`);
     else if (s.peRatio > 0 && s.peRatio < 12)  parts.push(`PE ${s.peRatio.toFixed(1)} 偏低`);
-    if (s.pbRatio > 0 && s.pbRatio < 1)       parts.push('PB低於淨值');
+    if (s.pbRatio > 0 && s.pbRatio < 1)        parts.push('PB低於淨值');
     else if (s.pbRatio > 0 && s.pbRatio < 1.5) parts.push(`PB ${s.pbRatio.toFixed(2)}`);
-    if (s.dividendYield >= 5)                  parts.push(`殖利率 ${s.dividendYield.toFixed(1)}% 保護`);
-    if (s.williamsR < -80)                     parts.push('威廉超賣');
-    if (s.rsi < 35)                            parts.push('RSI超賣');
-    // 低估股：越便宜越好，限價耐心等
-    orderType = '限價';
-    const ref = nearMA || price * 0.98;
-    suggestPrice = tickRound(ref);
+    if (s.dividendYield >= 5)                   parts.push(`殖利率 ${s.dividendYield.toFixed(1)}% 保護`);
+    if (s.williamsR < -80)                      parts.push('威廉超賣');
+    if (s.rsi < 35)                             parts.push('RSI超賣');
+    // 低估股耐心等，掛低 2%
+    orderType = '限價'; suggestPrice = limitPrice(price, 2);
   }
 
   return {
     text: parts.slice(0, 3).join('・') || '綜合指標達標',
-    orderType,
-    suggestPrice,
+    orderType, suggestPrice,
     isMarket: orderType === '現價',
   };
 }
