@@ -109,7 +109,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Noto Sans TC','Microsoft Jhen
     <div class="logo-icon">📊</div>
     <div class="logo-text">
       <h1>吉開北丸發財系統</h1>
-      <p>當沖精選 · 短期潛力 · 長期配息 · 低估掃描 · ATR · ADX · OBV · 融資券</p>
+      <p>當沖精選 · 短期潛力 · 長期配息 · 低估掃描 · ETF精選 · ATR · ADX · OBV · 融資券</p>
     </div>
   </div>
   <div class="header-right">
@@ -761,8 +761,27 @@ function scoreUndervalued(s) {
   return sc;
 }
 
+// ===================== ETF INFO TABLE =====================
+const ETF_INFO = {
+  '0050':  { name:'元大台灣50',       trackingIndex:'台灣50指數',             expenseRatio:0.46, fundFamily:'元大', category:'寬基指數',   type:'equity' },
+  '006208':{ name:'富邦台50',         trackingIndex:'富邦台灣采樣50指數',      expenseRatio:0.24, fundFamily:'富邦', category:'寬基指數',   type:'equity' },
+  '0056':  { name:'元大高股息',       trackingIndex:'台灣高股息指數',          expenseRatio:0.66, fundFamily:'元大', category:'高股息',     type:'equity' },
+  '00878': { name:'國泰永續高股息',   trackingIndex:'MSCI台灣ESG永續高股息',   expenseRatio:0.46, fundFamily:'國泰', category:'高股息/ESG', type:'equity' },
+  '00713': { name:'元大高息低波',     trackingIndex:'特選高息低波動指數',      expenseRatio:0.50, fundFamily:'元大', category:'高息低波',   type:'equity' },
+  '00919': { name:'群益台灣精選高息', trackingIndex:'台灣永續高股息指數',      expenseRatio:0.50, fundFamily:'群益', category:'高股息',     type:'equity' },
+  '00929': { name:'復華台灣科技優息', trackingIndex:'台灣高息成長指數',        expenseRatio:0.50, fundFamily:'復華', category:'高股息',     type:'equity' },
+  '00940': { name:'元大台灣價值高息', trackingIndex:'台灣價值高息指數',        expenseRatio:0.50, fundFamily:'元大', category:'價值高息',   type:'equity' },
+  '00679B':{ name:'元大美債20年',     trackingIndex:'ICE美國20年+公債指數',    expenseRatio:0.23, fundFamily:'元大', category:'長債',       type:'bond'   },
+  '00720B':{ name:'元大投資級公司債', trackingIndex:'彭博美國投資等級公司債',  expenseRatio:0.24, fundFamily:'元大', category:'投資級債',   type:'bond'   },
+  '00761B':{ name:'國泰US債20年',     trackingIndex:'ICE美國20年+公債指數',    expenseRatio:0.24, fundFamily:'國泰', category:'長債',       type:'bond'   },
+  '00746B':{ name:'富邦美債20年',     trackingIndex:'ICE美國20年+公債指數',    expenseRatio:0.24, fundFamily:'富邦', category:'長債',       type:'bond'   },
+  '00882': { name:'中信美債20年',     trackingIndex:'ICE美國20年+公債指數',    expenseRatio:0.23, fundFamily:'中信', category:'長債',       type:'bond'   },
+  '00631L':{ name:'元大台灣50正2',    trackingIndex:'台灣50指數 ×2',           expenseRatio:1.21, fundFamily:'元大', category:'槓桿',       type:'leveraged'},
+  '00632R':{ name:'元大台灣50反1',    trackingIndex:'台灣50指數 ×(-1)',        expenseRatio:1.09, fundFamily:'元大', category:'反向',       type:'inverse' },
+};
+
 // ===================== CACHE =====================
-const CACHE_KEY = 'jibei_screener_v3';
+const CACHE_KEY = 'jibei_screener_v4';
 const CACHE_TTL = 20 * 60 * 1000;
 
 function getCache() {
@@ -844,7 +863,11 @@ async function screenStocks(onProgress) {
     .sort((a, b) => scoreUndervalued(b) - scoreUndervalued(a))
     .slice(0, 60).map(s => s.code);
 
-  const allCodes = [...new Set([...dtCodes, ...stCodes, ...ltCodes, ...uvCodes])];
+  // ETF 候選：stock 型 + bond 型（排除槓桿/反向）
+  const etfBaseCodes = Object.keys(ETF_INFO).filter(c => ETF_INFO[c].type === 'equity' || ETF_INFO[c].type === 'bond');
+  const etfTWCodes   = etfBaseCodes.map(c => c + '.TW');
+
+  const allCodes = [...new Set([...dtCodes, ...stCodes, ...ltCodes, ...uvCodes, ...etfTWCodes])];
 
   const techMap = new Map();
   const total = allCodes.length;
@@ -880,7 +903,35 @@ async function screenStocks(onProgress) {
   const longTerm    = ltCodes.map(c => ({ ...enrich(c), _score: scoreLongTerm(enrich(c)) })).filter(s => s._score > 20).sort((a, b) => b._score - a._score).slice(0, 10);
   const undervalued = uvCodes.map(c => ({ ...enrich(c), _score: scoreUndervalued(enrich(c)) })).filter(s => s._score > 0).sort((a, b) => b._score - a._score).slice(0, 10);
 
-  const result = { dayTrade, shortTerm, longTerm, undervalued, updatedAt: new Date().toISOString(), dataDate };
+  // ETF 精選評分（殖利率為主 + 費率加分）
+  const etfRanked = etfTWCodes.map(twCode => {
+    const baseCode = twCode.replace('.TW', '');
+    const info = ETF_INFO[baseCode];
+    const fd   = fundMap.get(baseCode);
+    const tech = techMap.get(twCode) || {};
+    const yld  = fd?.dividendYield ?? null;
+    if (!yld) return null;
+    let score = 0;
+    if (yld >= 6)       score += 50;
+    else if (yld >= 5)  score += 40;
+    else if (yld >= 4)  score += 30;
+    else if (yld >= 3)  score += 20;
+    else if (yld >= 2)  score += 10;
+    if (info.expenseRatio <= 0.3) score += 15;
+    else if (info.expenseRatio <= 0.5) score += 10;
+    else if (info.expenseRatio <= 0.8) score += 5;
+    if (tech.rsi != null && tech.rsi >= 45 && tech.rsi <= 70) score += 8;
+    if (tech.macd?.value > 0 && tech.macd?.histogram > 0) score += 5;
+    return {
+      code: twCode, name: fd?.chineseName || info.name || baseCode,
+      close: tech.lastClose ?? 0, changePct: 0, changeDir: '',
+      dividendYield: yld, peRatio: fd?.peRatio ?? null, pbRatio: fd?.pbRatio ?? null,
+      isETF: true, etfInfo: info,
+      ...tech, _score: score,
+    };
+  }).filter(Boolean).sort((a, b) => b._score - a._score).slice(0, 10);
+
+  const result = { dayTrade, shortTerm, longTerm, undervalued, etfRanked, updatedAt: new Date().toISOString(), dataDate };
   setCache(result);
   onProgress(100, '完成！');
   return result;
@@ -1081,6 +1132,32 @@ function loadHistoryDate(date) {
   showResult(entry.data);
 }
 
+function etfCard(s, rank) {
+  const info = s.etfInfo || {};
+  const rankCls = rank === 1 ? 'gold' : rank === 2 ? 'silver' : rank === 3 ? 'bronze' : '';
+  const yldCls  = s.dividendYield >= 5 ? 'good' : s.dividendYield >= 3 ? '' : 'warn';
+  const feeColor = info.expenseRatio <= 0.3 ? 'var(--green)' : info.expenseRatio >= 1 ? 'var(--red)' : 'var(--amber)';
+  const rsiCls = s.rsi == null ? '' : s.rsi > 70 ? 'bad' : s.rsi < 35 ? 'warn' : 'good';
+  const mv = (label, val, cls = '') => val != null
+    ? `<div class="scard-metric"><span class="scard-ml">${label}</span><span class="scard-mv ${cls}">${val}</span></div>` : '';
+  const ticker = s.code.replace('.TW', '');
+  return `<a class="scard" href="https://cashwangtfc-cmyk.github.io/cash-stock-analysis/?q=${ticker}" target="_blank" rel="noopener">
+    <div class="scard-rank ${rankCls}">${rank}</div>
+    <div class="scard-code"><span style="font-size:9px;font-weight:700;background:#7c3aed;color:#f5f3ff;border-radius:3px;padding:0 4px;">ETF</span> ${ticker}</div>
+    <div class="scard-name" title="${s.name}">${s.name}</div>
+    <div class="scard-price" style="font-size:18px;">${s.close > 0 ? 'NT$' + s.close.toFixed(2) : '—'}</div>
+    <div style="font-size:10.5px;color:var(--gray-400);margin:3px 0 8px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${info.trackingIndex||''}">${info.category||'—'} · ${info.fundFamily||'—'}</div>
+    <div class="scard-divider"></div>
+    <div class="scard-metrics">
+      ${mv('殖利率', s.dividendYield != null ? s.dividendYield + '%' : null, yldCls)}
+      <div class="scard-metric"><span class="scard-ml">費用率</span><span class="scard-mv" style="color:${feeColor};">${info.expenseRatio != null ? info.expenseRatio + '%/年' : '—'}</span></div>
+      ${mv('RSI', s.rsi != null ? s.rsi.toFixed(1) : null, rsiCls)}
+      ${s.peRatio != null ? mv('殖息倍數', s.peRatio.toFixed(1), '') : ''}
+    </div>
+    <div style="margin-top:8px;font-size:9.5px;color:var(--gray-400);line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${info.trackingIndex||''}">追蹤：${info.trackingIndex||'—'}</div>
+  </a>`;
+}
+
 function showResult(data) {
   const dateStr = data.dataDate
     ? `資料：${data.dataDate.slice(0,4)}/${data.dataDate.slice(4,6)}/${data.dataDate.slice(6,8)}`
@@ -1089,12 +1166,27 @@ function showResult(data) {
     ? `更新：${new Date(data.updatedAt).toLocaleString('zh-TW', { hour12: false })}`
     : '';
   document.getElementById('meta-text').textContent = [dateStr, updStr].filter(Boolean).join('　');
+
+  const etfList = data.etfRanked || [];
+  const etfHtml = etfList.length
+    ? etfList.map((s, i) => etfCard(s, i + 1)).join('')
+    : `<div class="empty">ETF 殖利率資料尚未取得</div>`;
+  const etfSection = `<div class="section">
+    <div class="section-head">
+      <span class="section-icon">📦</span>
+      <span class="section-title">ETF 精選</span>
+      <span class="section-sub">殖利率 + 低費率綜合排名（排除槓桿/反向型）</span>
+    </div>
+    <div class="grid">${etfHtml}</div>
+  </div>`;
+
   document.getElementById('content').innerHTML =
     `<div class="notice">⚡ 點擊股票卡片，前往「Cash賺錢錢」查看 AI 詳細分析</div>` + [
       section('🔥', '當沖精選', '今日振幅大、成交活躍', data.dayTrade, 'dt'),
       section('📈', '短期上漲潛力', 'RSI 健康 + MACD 多頭 + 站上均線', data.shortTerm, 'st'),
       section('💎', '長期穩定配息', '高殖利率 + 合理本益比 + 低波動', data.longTerm, 'lt'),
       section('🔍', '被低估台股', 'PE + PB + 殖利率 + RSI 綜合評分', data.undervalued, 'uv'),
+      etfSection,
     ].join('');
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
