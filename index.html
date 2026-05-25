@@ -58,7 +58,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Noto Sans TC','Microsoft Jhen
 .scard-rank.gold{background:#f59e0b;}
 .scard-rank.silver{background:#94a3b8;}
 .scard-rank.bronze{background:#b45309;}
-.scard-code{font-size:11px;font-weight:700;color:var(--gray-400);font-family:monospace;letter-spacing:.5px;margin-bottom:2px;}
+.scard-code{font-size:11px;font-weight:700;color:var(--gray-400);font-family:monospace;letter-spacing:.5px;margin-bottom:2px;display:flex;align-items:center;gap:4px;}
+.otc-badge{display:inline-block;font-size:9px;font-weight:700;background:#2563eb;color:#fff;border-radius:3px;padding:0 4px;letter-spacing:0;font-family:sans-serif;}
 .scard-name{font-size:15px;font-weight:800;color:#0f172a;margin-bottom:8px;padding-right:28px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .scard-price{font-size:22px;font-weight:900;font-family:'Courier New',monospace;line-height:1;}
 .scard-chg{font-size:12px;font-weight:700;margin-top:3px;margin-bottom:10px;}
@@ -457,6 +458,7 @@ function calcTech(history) {
     if (wr != null) t.williamsR = wr;
   }
 
+  t.lastClose = price;
   return t;
 }
 
@@ -580,8 +582,31 @@ async function getTWSEMarginData() {
   return new Map();
 }
 
+async function getTPEXFundamentalsAll() {
+  try {
+    const r = await fetchWithTimeout(
+      'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_peratio_analysis', {}, 15000
+    );
+    if (!r.ok) return new Map();
+    const json = await r.json();
+    if (!Array.isArray(json) || json.length === 0) return new Map();
+    const map = new Map();
+    for (const row of json) {
+      const code = row.SecuritiesCompanyCode?.trim();
+      if (!code) continue;
+      map.set(code, {
+        name:          row.CompanyName?.trim() || code,
+        dividendYield: parseFloat(row.YieldRatio)        || null,
+        peRatio:       parseFloat(row.PriceEarningRatio) || null,
+        pbRatio:       parseFloat(row.PriceBookRatio)    || null,
+      });
+    }
+    return map;
+  } catch { return new Map(); }
+}
+
 async function fetchHistory(code) {
-  const ticker = code + '.TW';
+  const ticker = code.includes('.') ? code : code + '.TW';
   try {
     const r = await fetchWithTimeout(
       `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=6mo&interval=1d&includePrePost=false`,
@@ -725,7 +750,7 @@ function scoreUndervalued(s) {
 }
 
 // ===================== CACHE =====================
-const CACHE_KEY = 'jibei_screener_v2';
+const CACHE_KEY = 'jibei_screener_v3';
 const CACHE_TTL = 20 * 60 * 1000;
 
 function getCache() {
@@ -748,8 +773,8 @@ async function screenStocks(onProgress) {
   if (cached) return cached;
 
   onProgress(2, '取得大盤行情資料…');
-  const [{ stocks: daily, date: dataDate }, fundMap, instMap, marginMap] = await Promise.all([
-    getTWSEDailyAll(), getTWSEFundamentalsAll(), getTWSEInstitutional(), getTWSEMarginData()
+  const [{ stocks: daily, date: dataDate }, fundMap, instMap, marginMap, tpexFundMap] = await Promise.all([
+    getTWSEDailyAll(), getTWSEFundamentalsAll(), getTWSEInstitutional(), getTWSEMarginData(), getTPEXFundamentalsAll()
   ]);
 
   if (daily.length === 0) throw new Error('無法取得 TWSE 資料，請稍後再試');
@@ -771,16 +796,33 @@ async function screenStocks(onProgress) {
     shortChg:      marginMap.get(s.code)?.shortChg  ?? null,
   }));
 
+  // 建立上櫃虛擬候選（無成交量，只加入長期/低估類別）
+  const tpexStocks = [];
+  for (const [code, fund] of tpexFundMap) {
+    if (!fund.dividendYield && !fund.peRatio && !fund.pbRatio) continue;
+    tpexStocks.push({
+      code: code + '.TWO', name: fund.name,
+      close: 0, open: 0, high: 0, low: 0, value: 1e8,
+      changePct: 0, changeDir: '',
+      dividendYield: fund.dividendYield, peRatio: fund.peRatio, pbRatio: fund.pbRatio,
+      reportPeriod: null, foreignNet: null, trustNet: null, dealerNet: null,
+      totalNet: null, marginNet: null, marginChg: null, shortChg: null,
+      isOTC: true,
+    });
+  }
+  const allMerged = [...merged, ...tpexStocks];
+
   const byValue = [...merged].sort((a, b) => (b.value||0) - (a.value||0));
   const dtCodes = byValue.slice(0, 60).map(s => s.code);
   const stCodes = byValue.filter(s => s.close >= 8).slice(0, 80).map(s => s.code);
-  const ltCodes = merged
+  const ltCodes = allMerged
     .filter(s => s.dividendYield > 1.5 && (s.peRatio == null || (s.peRatio > 0 && s.peRatio < 40)))
     .sort((a, b) => (b.dividendYield||0) - (a.dividendYield||0))
     .slice(0, 60).map(s => s.code);
-  const uvCodes = merged
+  const uvCodes = allMerged
     .filter(s => {
-      if (!/^[1-9]\d{3}$/.test(s.code)) return false;
+      const baseCode = s.code.replace(/\.(TW|TWO)$/, '');
+      if (!s.isOTC && !/^[1-9]\d{3}$/.test(baseCode)) return false;
       const pe = s.peRatio, pb = s.pbRatio, yl = s.dividendYield;
       if (!pe && !pb && !yl) return false;
       if (pe != null && (pe <= 0 || pe > 100)) return false;
@@ -809,8 +851,17 @@ async function screenStocks(onProgress) {
 
   onProgress(90, '計算排名…');
 
-  const codeMap = new Map(merged.map(s => [s.code, s]));
-  const enrich  = code => ({ ...codeMap.get(code), ...(techMap.get(code) || {}) });
+  const codeMap = new Map([
+    ...merged.map(s => [s.code, s]),
+    ...tpexStocks.map(s => [s.code, s]),
+  ]);
+  const enrich = code => {
+    const base = codeMap.get(code) || {};
+    const tech = techMap.get(code) || {};
+    const enriched = { ...base, ...tech };
+    if (base.isOTC && tech.lastClose) enriched.close = tech.lastClose;
+    return enriched;
+  };
 
   const dayTrade    = dtCodes.map(c => ({ ...enrich(c), _score: scoreDayTrade(enrich(c)) })).filter(s => s._score > 10).sort((a, b) => b._score - a._score).slice(0, 10);
   const shortTerm   = stCodes.map(c => ({ ...enrich(c), _score: scoreShortTerm(enrich(c)) })).filter(s => s._score > 15).sort((a, b) => b._score - a._score).slice(0, 10);
@@ -949,9 +1000,11 @@ function card(s, rank, type) {
     </div>
   </div>`;
 
+  const displayCode = s.code.replace(/\.(TW|TWO)$/, '');
+  const otcBadge = s.isOTC ? `<span class="otc-badge">上櫃</span>` : '';
   return `<div class="scard" onclick="window.open('${ANALYSIS_URL}?q=${s.code}')" title="點擊查看 ${s.name} 詳細分析">
     <div class="scard-rank ${rankCls}">${rank}</div>
-    <div class="scard-code">${s.code}</div>
+    <div class="scard-code">${displayCode}${otcBadge}</div>
     <div class="scard-name">${s.name}</div>
     <div class="scard-price ${cls}">NT$${(s.close||0).toLocaleString()}</div>
     <div class="scard-chg ${cls}">${arrow} ${sign}${s.changePct}%</div>
