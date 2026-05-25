@@ -85,10 +85,20 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Noto Sans TC','Microsoft Jhen
 .scard-ai-amt.market{color:#dc2626;}
 .scard-ai-amt.limit{color:var(--blue-d);}
 
+.history-bar{display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap;}
+.history-label{font-size:13px;font-weight:600;color:var(--gray-500);flex-shrink:0;}
+.history-tabs{display:flex;gap:6px;flex-wrap:wrap;}
+.htab{padding:5px 14px;border:1.5px solid var(--border);border-radius:20px;background:white;font-size:13px;font-weight:600;color:var(--gray-500);cursor:pointer;transition:all .2s;}
+.htab:hover{border-color:var(--blue);color:var(--blue);}
+.htab.active{background:var(--blue);border-color:var(--blue);color:white;}
+.history-viewing{background:var(--amber-l);border:1px solid #fde68a;border-radius:var(--radius);padding:10px 16px;font-size:13px;color:#92400e;margin-bottom:16px;}
+
 @media(max-width:600px){
   .header{padding:14px 12px;}
   .grid{grid-template-columns:repeat(2,1fr);}
   .section-title{font-size:16px;}
+  .history-bar{gap:6px;}
+  .htab{padding:4px 11px;font-size:12px;}
 }
 </style>
 </head>
@@ -109,6 +119,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Noto Sans TC','Microsoft Jhen
 </div>
 
 <div class="container">
+  <div id="history-bar" class="history-bar" style="display:none;"></div>
+  <div id="history-viewing-banner" class="history-viewing" style="display:none;"></div>
   <div id="loading" class="loading-box">
     <div class="spinner"></div>
     <p id="loading-text">正在取得市場資料…</p>
@@ -1014,6 +1026,80 @@ function card(s, rank, type) {
   </div>`;
 }
 
+// ===================== HISTORY =====================
+const HISTORY_KEY = 'jibei_history';
+
+function saveHistory(result) {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const raw = localStorage.getItem(HISTORY_KEY);
+    const history = raw ? JSON.parse(raw) : [];
+    const filtered = history.filter(h => h.date !== today).slice(0, 4);
+    filtered.unshift({ date: today, dataDate: result.dataDate, data: result });
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(filtered));
+  } catch {}
+}
+
+function getHistory() {
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; } catch { return []; }
+}
+
+let _viewingDate = null;
+
+function renderHistoryTabs(activeDate) {
+  const history = getHistory();
+  if (history.length === 0) {
+    document.getElementById('history-bar').style.display = 'none';
+    return;
+  }
+  _viewingDate = activeDate;
+  const today = new Date().toISOString().split('T')[0];
+  const tabs = history.map(h => {
+    const d = new Date(h.date + 'T00:00:00');
+    const label = h.date === today ? '今日' : `${d.getMonth()+1}/${d.getDate()}`;
+    const active = h.date === activeDate;
+    return `<button class="htab${active?' active':''}" onclick="loadHistoryDate('${h.date}')">${label}</button>`;
+  }).join('');
+  document.getElementById('history-bar').innerHTML =
+    `<span class="history-label">📅 歷史紀錄</span><div class="history-tabs">${tabs}</div>`;
+  document.getElementById('history-bar').style.display = 'flex';
+
+  const banner = document.getElementById('history-viewing-banner');
+  if (activeDate && activeDate !== today) {
+    const d = new Date(activeDate + 'T00:00:00');
+    banner.textContent = `⚠ 正在查看 ${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} 的選股結果（歷史資料）`;
+    banner.style.display = 'block';
+  } else {
+    banner.style.display = 'none';
+  }
+}
+
+function loadHistoryDate(date) {
+  const entry = getHistory().find(h => h.date === date);
+  if (!entry) return;
+  renderHistoryTabs(date);
+  showResult(entry.data);
+}
+
+function showResult(data) {
+  const dateStr = data.dataDate
+    ? `資料：${data.dataDate.slice(0,4)}/${data.dataDate.slice(4,6)}/${data.dataDate.slice(6,8)}`
+    : '';
+  const updStr = data.updatedAt
+    ? `更新：${new Date(data.updatedAt).toLocaleString('zh-TW', { hour12: false })}`
+    : '';
+  document.getElementById('meta-text').textContent = [dateStr, updStr].filter(Boolean).join('　');
+  document.getElementById('content').innerHTML =
+    `<div class="notice">⚡ 點擊股票卡片，前往「Cash賺錢錢」查看 AI 詳細分析</div>` + [
+      section('🔥', '當沖精選', '今日振幅大、成交活躍', data.dayTrade, 'dt'),
+      section('📈', '短期上漲潛力', 'RSI 健康 + MACD 多頭 + 站上均線', data.shortTerm, 'st'),
+      section('💎', '長期穩定配息', '高殖利率 + 合理本益比 + 低波動', data.longTerm, 'lt'),
+      section('🔍', '被低估台股', 'PE + PB + 殖利率 + RSI 綜合評分', data.undervalued, 'uv'),
+    ].join('');
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('content').style.display = 'block';
+}
+
 // ===================== LOAD =====================
 function setProgress(pct, status) {
   document.getElementById('progress-fill').style.width = pct + '%';
@@ -1038,25 +1124,10 @@ async function load(force = false) {
 
   try {
     const data = await screenStocks(setProgress);
-
-    const dateStr = data.dataDate
-      ? `資料：${data.dataDate.slice(0,4)}/${data.dataDate.slice(4,6)}/${data.dataDate.slice(6,8)}`
-      : '';
-    const updStr = data.updatedAt
-      ? `更新：${new Date(data.updatedAt).toLocaleString('zh-TW', { hour12: false })}`
-      : '';
-    document.getElementById('meta-text').textContent = [dateStr, updStr].filter(Boolean).join('　');
-
-    document.getElementById('content').innerHTML =
-      `<div class="notice">⚡ 點擊股票卡片，前往「Cash賺錢錢」查看 AI 詳細分析</div>` + [
-        section('🔥', '當沖精選', '今日振幅大、成交活躍', data.dayTrade, 'dt'),
-        section('📈', '短期上漲潛力', 'RSI 健康 + MACD 多頭 + 站上均線', data.shortTerm, 'st'),
-        section('💎', '長期穩定配息', '高殖利率 + 合理本益比 + 低波動', data.longTerm, 'lt'),
-        section('🔍', '被低估台股', 'PE + PB + 殖利率 + RSI 綜合評分', data.undervalued, 'uv'),
-      ].join('');
-
-    document.getElementById('loading').style.display = 'none';
-    document.getElementById('content').style.display = 'block';
+    saveHistory(data);
+    const today = new Date().toISOString().split('T')[0];
+    showResult(data);
+    renderHistoryTabs(today);
   } catch (e) {
     document.getElementById('loading').style.display = 'none';
     document.getElementById('error').style.display = 'block';
