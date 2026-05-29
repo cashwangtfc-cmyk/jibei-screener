@@ -349,11 +349,12 @@ function calcAISummary(s, type) {
     if (s.foreignNet > 0)    parts.push('外資買超');
     if (s.volRatio >= 2)     parts.push('爆量');
     if (s.obvTrend === 1)    parts.push('OBV量增');
-    // 爆量+KD金叉或融券回補 → 現價追；否則掛低 1%
-    if (s.kdGolden || (s.volRatio >= 2.5 && s.shortChg < -100)) {
+    // 有動能訊號 → 現價追，否則掛低 0.3%（小折讓確保成交，不錯失行情）
+    const dtStrong = s.kdGolden || s.volRatio >= 2 || s.atrPct >= 3 || (s.shortChg != null && s.shortChg < -100);
+    if (dtStrong) {
       orderType = '現價'; suggestPrice = price;
     } else {
-      orderType = '限價'; suggestPrice = limitPrice(price, 1);
+      orderType = '限價'; suggestPrice = limitPrice(price, 0.3);
     }
   } else if (type === 'st') {
     if (s.macdHist > 0 && s.macdHistChange > 0) parts.push('MACD多頭擴張');
@@ -364,11 +365,11 @@ function calcAISummary(s, type) {
     if (s.obvTrend === 1)    parts.push('OBV量先行');
     if (s.foreignNet > 1e6)  parts.push('外資大舉買超');
     else if (s.foreignNet > 0) parts.push('外資買超');
-    // KD金叉+MACD+強均線三合一 → 現價；否則等回測掛低 2%
-    if (s.kdGolden && s.maAlign >= 2 && s.macdHist > 0) {
+    // KD金叉 或 MACD多頭+均線多排雙確認 → 現價；否則等小回掛低 1%
+    if (s.kdGolden || (s.macdHist > 0 && s.maAlign >= 2)) {
       orderType = '現價'; suggestPrice = price;
     } else {
-      orderType = '限價'; suggestPrice = limitPrice(price, 2);
+      orderType = '限價'; suggestPrice = limitPrice(price, 1);
     }
   } else if (type === 'lt') {
     if (s.dividendYield >= 6)        parts.push(`殖利率 ${s.dividendYield.toFixed(1)}% 超高`);
