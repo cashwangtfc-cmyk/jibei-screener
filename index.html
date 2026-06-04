@@ -849,18 +849,22 @@ const ETF_INFO = {
 
 // ===================== CACHE =====================
 const CACHE_KEY = 'jibei_screener_v4';
-const CACHE_TTL = 20 * 60 * 1000;
+const CACHE_TTL  = 20 * 60 * 1000;      // 20 分鐘：新鮮快取
+const STALE_TTL  = 2  * 60 * 60 * 1000; // 2 小時：可用的過期快取
 
-function getCache() {
-  try {
-    const raw = localStorage.getItem(CACHE_KEY);
-    if (!raw) return null;
-    const { ts, data } = JSON.parse(raw);
-    if (Date.now() - ts > CACHE_TTL) { localStorage.removeItem(CACHE_KEY); return null; }
-    return data;
-  } catch { return null; }
+function _readCacheEntry() {
+  try { const raw = localStorage.getItem(CACHE_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
 }
-
+function getCache() {
+  const e = _readCacheEntry();
+  return (e && Date.now() - e.ts <= CACHE_TTL) ? e.data : null;
+}
+function getStaleCache() {
+  const e = _readCacheEntry();
+  if (!e) return null;
+  if (Date.now() - e.ts > STALE_TTL) { localStorage.removeItem(CACHE_KEY); return null; }
+  return e.data;
+}
 function setCache(data) {
   try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data })); } catch {}
 }
@@ -911,12 +915,12 @@ async function screenStocks(onProgress) {
   const allMerged = [...merged, ...tpexStocks];
 
   const byValue = [...merged].sort((a, b) => (b.value||0) - (a.value||0));
-  const dtCodes = byValue.slice(0, 60).map(s => s.code);
-  const stCodes = byValue.filter(s => s.close >= 8).slice(0, 80).map(s => s.code);
+  const dtCodes = byValue.slice(0, 40).map(s => s.code);
+  const stCodes = byValue.filter(s => s.close >= 8).slice(0, 50).map(s => s.code);
   const ltCodes = allMerged
     .filter(s => s.dividendYield > 1.5 && (s.peRatio == null || (s.peRatio > 0 && s.peRatio < 40)))
     .sort((a, b) => (b.dividendYield||0) - (a.dividendYield||0))
-    .slice(0, 60).map(s => s.code);
+    .slice(0, 40).map(s => s.code);
   const uvCodes = allMerged
     .filter(s => {
       const baseCode = s.code.replace(/\.(TW|TWO)$/, '');
@@ -928,7 +932,7 @@ async function screenStocks(onProgress) {
       return scoreUndervalued(s) >= 20;
     })
     .sort((a, b) => scoreUndervalued(b) - scoreUndervalued(a))
-    .slice(0, 60).map(s => s.code);
+    .slice(0, 40).map(s => s.code);
 
   // ETF 候選：stock 型 + bond 型（排除槓桿/反向）
   const etfBaseCodes = Object.keys(ETF_INFO).filter(c => ETF_INFO[c].type === 'equity' || ETF_INFO[c].type === 'bond');
@@ -939,7 +943,7 @@ async function screenStocks(onProgress) {
   const techMap = new Map();
   const total = allCodes.length;
   let done = 0;
-  const BATCH = 5;
+  const BATCH = 8;
   for (let i = 0; i < allCodes.length; i += BATCH) {
     await Promise.allSettled(allCodes.slice(i, i + BATCH).map(async code => {
       const hist = await fetchHistory(code);
@@ -948,7 +952,7 @@ async function screenStocks(onProgress) {
     }));
     const pct = 12 + Math.round(done / total * 75);
     onProgress(pct, `技術分析 ${done} / ${total} 檔`);
-    if (i + BATCH < allCodes.length) await new Promise(r => setTimeout(r, 180));
+    if (i + BATCH < allCodes.length) await new Promise(r => setTimeout(r, 160));
   }
 
   onProgress(90, '計算排名…');
@@ -988,7 +992,7 @@ async function screenStocks(onProgress) {
     else if (info.expenseRatio <= 0.5) score += 10;
     else if (info.expenseRatio <= 0.8) score += 5;
     if (tech.rsi != null && tech.rsi >= 45 && tech.rsi <= 70) score += 8;
-    if (tech.macd?.value > 0 && tech.macd?.histogram > 0) score += 5;
+    if (tech.macdHist != null && tech.macdHist > 0 && tech.macdHistChange != null && tech.macdHistChange > 0) score += 5;
     return {
       code: twCode, name: fd?.chineseName || info.name || baseCode,
       close: tech.lastClose ?? 0, changePct: 0, changeDir: '',
@@ -1009,11 +1013,18 @@ function section(icon, title, sub, stocks, type) {
   const cards = stocks?.length
     ? stocks.map((s, i) => card(s, i + 1, type)).join('')
     : `<div class="empty">今日無符合條件的股票</div>`;
+  const hints = {
+    dt: '評分依據：成交金額(35)・振幅/ATR(22)・RSI位置(15)・量比(12)・KD(8)・OBV(8)・外資(8)・融券回補(8)',
+    st: '評分依據：RSI趨勢(43)・MACD多頭(27)・站上MA20(20)・KD金叉(18)・ADX強趨勢(22)・OBV量先行(15)・外資買超(25)',
+    lt: '評分依據：殖利率(40)・本益比(25)・股淨比(20)・低波動率(15)・外資布局(15)・均線多排(10)',
+    uv: '評分依據：本益比(35)・股淨比(25)・殖利率(25)・RSI超賣(12)・威廉%R超賣(15)，分數≥20才納入',
+  };
+  const titleAttr = hints[type] ? ` title="${hints[type]}"` : '';
   return `<div class="section">
     <div class="section-head">
       <span class="section-icon">${icon}</span>
       <span class="section-title">${title}</span>
-      <span class="section-sub">${sub}</span>
+      <span class="section-sub"${titleAttr} style="cursor:help">${sub}</span>
     </div>
     <div class="grid">${cards}</div>
   </div>`;
@@ -1301,21 +1312,51 @@ function setProgress(pct, status) {
 }
 
 async function load(force = false) {
+  const btn = document.getElementById('refresh-btn');
+  const today = new Date().toISOString().split('T')[0];
+
+  if (force) { try { localStorage.removeItem(CACHE_KEY); } catch {} }
+
+  // ① 新鮮快取（< 20分鐘）→ 直接顯示，不發任何 API
+  const fresh = !force && getCache();
+  if (fresh) {
+    saveHistory(fresh);
+    showResult(fresh);
+    renderHistoryTabs(today);
+    return;
+  }
+
+  // ② 過期快取（< 2小時）→ 先顯示舊資料，背景靜默更新
+  const stale = !force && getStaleCache();
+  if (stale) {
+    showResult(stale);
+    renderHistoryTabs(today);
+    const origLabel = btn.textContent;
+    btn.textContent = '⏳ 更新中…';
+    btn.disabled = true;
+    try {
+      const fresh2 = await screenStocks(() => {});
+      saveHistory(fresh2);
+      showResult(fresh2);
+      renderHistoryTabs(today);
+    } catch {}
+    btn.textContent = origLabel;
+    btn.disabled = false;
+    return;
+  }
+
+  // ③ 無快取 → 顯示載入畫面，等待完成
   document.getElementById('loading').style.display = 'block';
   document.getElementById('content').style.display = 'none';
   document.getElementById('error').style.display = 'none';
   document.getElementById('progress-wrap').style.display = 'none';
   document.getElementById('loading-text').textContent = '正在取得市場資料…';
   document.getElementById('progress-fill').style.width = '0%';
-  const btn = document.getElementById('refresh-btn');
   btn.disabled = true;
-
-  if (force) { try { localStorage.removeItem(CACHE_KEY); } catch {} }
 
   try {
     const data = await screenStocks(setProgress);
     saveHistory(data);
-    const today = new Date().toISOString().split('T')[0];
     showResult(data);
     renderHistoryTabs(today);
   } catch (e) {
